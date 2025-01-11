@@ -57,6 +57,19 @@ Install_dst() {
     sudo apt-get install -y lib32gcc1
     sudo apt-get install -y libcurl4-gnutls-dev:i386
     sudo apt-get install -y screen
+    echo "环境依赖安装完毕"
+
+    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/
+    touch ~/.klei/DoNotStarveTogether/Cluster_1/cluster_token.txt
+    touch ~/.klei/DoNotStarveTogether/Cluster_1/adminlist.txt
+    touch ~/.klei/DoNotStarveTogether/Cluster_1/blocklist.txt
+    touch ~/.klei/DoNotStarveTogether/Cluster_1/whitelist.txt
+    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/
+    touch ~/.klei/DoNotStarveTogether/Cluster_2/cluster_token.txt
+    touch ~/.klei/DoNotStarveTogether/Cluster_2/adminlist.txt
+    touch ~/.klei/DoNotStarveTogether/Cluster_2/blocklist.txt
+    touch ~/.klei/DoNotStarveTogether/Cluster_2/whitelist.txt
+    echo "饥荒存档文件夹创建完成"
 
     settingSwap   #设置虚拟内存
     echo "设置虚拟内存2GB"
@@ -69,18 +82,7 @@ Install_dst() {
 
     cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
     cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
-
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/cluster_token.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/adminlist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/blocklist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/whitelist.txt
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/cluster_token.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/adminlist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/blocklist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/whitelist.txt
-
+    echo "MOD更新bug已修复"
     echo "Don't Starve Together 服务器安装完成."
 }
 
@@ -90,8 +92,9 @@ Update_dst() {
     echo "正在更新 Don't Starve Together 服务器..."
     cd "$steamcmd_dir" || fail
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
-    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
     echo "服务器更新完成,请重新执行脚本"
+    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
+    echo "MOD更新bug已修复"
 }
 
 
@@ -108,7 +111,7 @@ function AddAutoUpdateMod() {
     elif [[ "$cluster_choice" -eq 2 ]]; then
         cluster_file="$HOME/.klei/DoNotStarveTogether/Cluster_2/Master/modoverrides.lua"
     else
-        echo "无效的集群选择."
+        echo "无效的选择."
         return
     fi
 
@@ -147,6 +150,7 @@ function AddAutoUpdateMod() {
 # 更新指定 Cluster 的模组
 function UpdateMods() {
     local cluster_choice
+    echo "============================================"
     echo "请选择要更新的MOD配置:"
     echo "1. 更新 Cluster_1 模组配置文件"
     echo "2. 更新 Cluster_2 模组配置文件"
@@ -183,6 +187,16 @@ function start_server() {
     local cluster=$1
     local shard=$2
     local screen_name="$cluster$shard"
+    local token_file="$HOME/.klei/DoNotStarveTogether/$cluster/cluster_token.txt"
+
+    # 检查 cluster_token.txt 是否存在且不为空
+    if [[ ! -f "$token_file" ]]; then
+        echo "错误: $token_file 文件不存在.请添加令牌文件"
+        return 1
+    elif [[ ! -s "$token_file" ]]; then
+        echo "错误: $token_file 文件为空.请添加令牌文件"
+        return 1
+    fi
 
     if screen -list | grep -q "$screen_name"; then
         echo "$screen_name 服务器已经在运行."
@@ -199,6 +213,7 @@ BackupSaves() {
     local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 
     while true; do
+        echo "============================================"
         echo "请选择要备份的存档:"
         echo "1. 备份 Cluster_1 存档"
         echo "2. 备份 Cluster_2 存档"
@@ -209,13 +224,17 @@ BackupSaves() {
         case $backup_choice in
             1)
                 echo "正在备份 Cluster_1 存档..."
-                tar -czf "$HOME/.klei/DoNotStarveTogether/Cluster_1_backup_$timestamp.tar.gz" "$HOME/.klei/DoNotStarveTogether/Cluster_1"
-                echo "Cluster_1 存档已备份至.klei/DoNotStarveTogether."
+                cd "$HOME/.klei/DoNotStarveTogether/Cluster_1" || { echo "无法进入目录"; return; }
+                local backup_file="$HOME/.klei/DoNotStarveTogether/Cluster_1_backup_$timestamp.tar.gz"
+                tar -czf "$backup_file" .
+                echo "备份完成，文件位置: $backup_file"
                 ;;
             2)
                 echo "正在备份 Cluster_2 存档..."
-                tar -czf "$HOME/.klei/DoNotStarveTogether/Cluster_2_backup_$timestamp.tar.gz" "$HOME/.klei/DoNotStarveTogether/Cluster_2"
-                echo "Cluster_2 存档已备份至.klei/DoNotStarveTogether."
+                cd "$HOME/.klei/DoNotStarveTogether/Cluster_2" || { echo "无法进入目录"; return; }
+                local backup_file="$HOME/.klei/DoNotStarveTogether/Cluster_2_backup_$timestamp.tar.gz"
+                tar -czf "$backup_file" .
+                echo "备份完成，文件位置: $backup_file"
                 ;;
             0)
                 break
@@ -232,6 +251,7 @@ BackupSaves() {
 function DeleteSaves() {
     local cluster_choice
     while true; do
+        echo "============================================"
         echo "请选择要删除的存档:"
         echo "1. 删除 Cluster_1 存档"
         echo "2. 删除 Cluster_2 存档"
@@ -256,6 +276,9 @@ function DeleteSaves() {
                     rm -rf "$HOME/.klei/DoNotStarveTogether/Cluster_2/Caves/save"/*
                     echo "Cluster_2 存档已删除."
                     ;;
+                0)
+                    break
+                ;;
             esac
         else
             echo "无效选择. 请重试."
@@ -284,6 +307,7 @@ function run_monitoring() {
 # 监控崩溃重启
 function ms_servers() {
     while true; do
+        echo "============================================"
         echo "请选择要执行的操作:"
         echo "1. 监控Cluster_1崩溃重启"
         echo "2. 监控Cluster_2崩溃重启"
@@ -329,27 +353,269 @@ function ms_servers() {
     done
 }
 
+# 发送公告函数
+send_announcement() {
+    local cluster_name="$1"
+    read -p "请输入要发送的公告内容: " announcement
+
+    local master_server="${cluster_name}Master"
+
+    if [[ "$master_server" == "Cluster_1Master" || "$master_server" == "Cluster_2Master" ]]; then
+        screen -S "$master_server" -X stuff "c_announce(\"$announcement\")\n"
+        echo "公告已发送到 $cluster_name 的 Master 服务器。"
+    else
+        echo "无效的集群名称。"
+    fi
+}
+
+# 回档服务器函数
+rollback_server() {
+    local cluster_name="$1"
+    local rollback_count="$2"
+
+    local master_server="${cluster_name}Master"
+
+    if [[ "$master_server" == "Cluster_1Master" || "$master_server" == "Cluster_2Master" ]]; then
+        echo "正在回档 $cluster_name 的 Master 服务器 $rollback_count 次..."
+        screen -S "$master_server" -X stuff "c_rollback($rollback_count)\n"
+        echo "$cluster_name 的 Master 服务器已尝试回档。"
+    else
+        echo "无效的集群名称。"
+    fi
+}
+
+# 拉黑玩家函数
+ban_player() {
+    local cluster_name="$1"
+    read -p "请输入要拉黑的玩家 ID (userid): " userid
+
+    if [[ -z "$userid" ]]; then
+        echo "玩家 ID 不能为空。"
+        return 1
+    fi
+
+    local master_server="${cluster_name}Master"
+
+    if [[ "$master_server" == "Cluster_1Master" || "$master_server" == "Cluster_2Master" ]]; then
+        echo "正在拉黑 $cluster_name 的 Master 服务器上的玩家 $userid..."
+        screen -S "$master_server" -X stuff "TheNet:Ban(\"$userid\")\n"
+        echo "已尝试在 $cluster_name 的 Master 服务器上拉黑玩家 $userid。"
+    else
+        echo "无效的集群名称。"
+    fi
+}
+
+# 服务器控制台函数
+server_console() {
+    while true; do
+        echo "============================================"
+        echo "服务器控制台"
+        echo "请选择一个选项:"
+        echo "1. 发送服务器公告"
+        echo "2. 服务器回档"
+        echo "3. 拉黑玩家"
+        echo "0. 返回主菜单"
+
+        read -p "输入您的选择 (0-3): " console_choice
+        case $console_choice in
+            1)
+                while true; do
+                    echo "请选择要发公告的服务器:"
+                    echo "1. Cluster_1"
+                    echo "2. Cluster_2"
+                    echo "0. 返回服务器控制台"
+                    read -p "输入您的选择 (0-2): " announce_choice
+                    case $announce_choice in
+                        1) send_announcement "Cluster_1" ;;
+                        2) send_announcement "Cluster_2" ;;
+                        0) break ;;
+                        *) echo "无效选择. 请重试." ;;
+                    esac
+                done
+                ;;
+            2)
+                while true; do
+                    echo "请选择要回档的服务器:"
+                    echo "1. Cluster_1"
+                    echo "2. Cluster_2"
+                    echo "0. 返回服务器控制台"
+                    read -p "输入您的选择 (0-2): " rollback_choice
+                    case $rollback_choice in
+                        1)
+                            read -p "请输入回档次数: " rollback_count
+                            rollback_server "Cluster_1" "$rollback_count"
+                            ;;
+                        2)
+                            read -p "请输入回档次数: " rollback_count
+                            rollback_server "Cluster_2" "$rollback_count"
+                            ;;
+                        0) break ;;
+                        *) echo "无效选择. 请重试." ;;
+                    esac
+                done
+                ;;
+            3)
+                while true; do
+                    echo "请选择要拉黑玩家的服务器:"
+                    echo "1. Cluster_1"
+                    echo "2. Cluster_2"
+                    echo "0. 返回服务器控制台"
+                    read -p "输入您的选择 (0-2): " ban_choice
+                    case $ban_choice in
+                        1) ban_player "Cluster_1" ;;
+                        2) ban_player "Cluster_2" ;;
+                        0) break ;;
+                        *) echo "无效选择. 请重试." ;;
+                    esac
+                done
+                ;; 
+            0) break ;;
+            *) echo "无效选择. 请重试." ;;
+        esac
+    done
+}
+
+# 保存服务器函数
+save_server() {
+    while true; do
+        echo "============================================"
+        echo "请选择一个选项:"
+        echo "1. 关闭Cluster_1服务器"
+        echo "2. 关闭Cluster_2服务器"
+        echo "0. 返回主菜单"
+        echo "要退出 screen 会话, 请按 Ctrl+A+D."
+
+        read -p "输入您的选择 (0-2): " view_choice
+        case $view_choice in
+            1)
+                echo "正在保存Cluster_1服务器.."
+                screen -X -S Cluster_1Master stuff "c_save()\n"
+                sleep 6  # 等待 6 秒
+                echo "正在关闭Cluster_1服务器.."
+                screen -X -S Cluster_1Master quit
+                screen -X -S Cluster_1Caves quit
+                echo "Cluster_1服务器已关闭."
+                ;;
+            2)
+                echo "正在保存Cluster_2服务器.."
+                screen -X -S Cluster_2Master stuff "c_save()\n"
+                sleep 6  # 等待 6 秒
+                echo "正在关闭Cluster_2服务器.."
+                screen -X -S Cluster_2Master quit
+                screen -X -S Cluster_2Caves quit
+                echo "Cluster_2服务器已关闭."
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo "无效选择. 请重试."
+                ;;
+        esac
+    done
+}
+
+
+# 其他选项函数
+others() {
+    while true; do
+        echo "============================================"
+        echo "其他选项"
+        echo "1. 更新脚本"
+        echo "2. 更新黑名单"
+        echo "3. 删除所有MOD"
+        echo "4. 删除DST服务器程序"
+        echo "0. 返回主菜单"
+        read -p "输入选项: " option
+
+        case $option in
+            1)
+                echo "正在更新脚本..."
+                sleep 3  # 增加3秒的延迟
+                wget -q -O x.sh https://cdn.jsdelivr.net/gh/xiaochency/dst@main/x.sh
+                
+                # 检查wget的返回值
+                if [ $? -eq 0 ]; then
+                    chmod 755 x.sh
+                    echo "已成功更新脚本，请重新执行脚本"
+                else
+                    echo "更新脚本失败，请检查网络连接或URL是否正确"
+                fi
+                exit 0
+                ;;
+            2)
+                echo "正在更新黑名单..."
+                sleep 3  # 增加3秒的延迟
+                wget -q -O blocklist.txt https://cdn.jsdelivr.net/gh/xiaochency/dst@main/blocklist.txt
+                cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_1
+                cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_2
+
+                # 检查wget的返回值
+                if [ $? -eq 0 ]; then
+                    echo "已成功更新黑名单"
+                else
+                    echo "更新黑名单失败，请检查网络连接或URL是否正确"
+                fi
+                ;;
+            3)
+                read -p "您确定要删除所有MOD吗？(y/n): " confirm
+                if [[ $confirm == "y" || $confirm == "Y" ]]; then
+                    echo "正在删除所有MOD..."
+                    rm -rf ~/dst/ugc_mods/Cluster_1/Master/content/322330/*
+                    rm -rf ~/dst/ugc_mods/Cluster_2/Master/content/322330/*
+                    rm -rf ~/dst/ugc_mods/Cluster_1/Caves/content/322330/*
+                    rm -rf ~/dst/ugc_mods/Cluster_2/Caves/content/322330/*
+                    echo "已成功删除所有MOD"
+                else
+                    echo "取消删除所有MOD"
+                fi
+                ;;
+            4)
+                read -p "您确定要删除DST服务器程序吗？(y/n): " confirm
+                if [[ $confirm == "y" || $confirm == "Y" ]]; then
+                    echo "正在删除DST服务器程序..."
+                    rm -rf "$install_dir"
+                    rm -rf "$steamcmd_dir"
+                    echo "已成功删除DST服务器程序"
+                else
+                    echo "取消删除DST服务器程序"
+                fi
+                ;;
+            0)
+                echo "返回主菜单"
+                break
+                ;;
+            *)
+                echo "无效选项，请重试"
+                ;;
+        esac
+    done
+}
 
 
 #主菜单
 while true; do
-    echo 饥荒云服务器管理脚本1.1.3 By:xiaochency
-    echo "请选择一个选项:"
-    echo "1. 启动服务器"
-    echo "2. 更新服务器"
-    echo "3. 查看服务器"
-    echo "4. 关闭服务器"
-    echo "5. 更新服务器MOD配置"
-    echo "6. 监控服务器崩溃重启"
-    echo "7. 存档管理"
-    echo "8. 服务器控制台"
-    echo "9. 安装服务器"
-    echo "0. 退出"
+    echo "-------------------------------------------------"
+    echo "饥荒云服务器管理脚本1.1.8 By:xiaochency            "
+    echo "-------------------------------------------------"
+    echo "请选择一个选项:                                   "
+    echo "-------------------------------------------------"
+    echo "| [1] 启动服务器          [2] 更新服务器          |"
+    echo "-------------------------------------------------"
+    echo "| [3] 查看服务器          [4] 关闭服务器          |"
+    echo "-------------------------------------------------"
+    echo "| [5] 更新服务器MOD配置   [6] 监控服务器崩溃重启   |"
+    echo "-------------------------------------------------"
+    echo "| [7] 存档管理            [8] 服务器控制台        |"
+    echo "-------------------------------------------------"
+    echo "| [9] 安装服务器          [0] 更多                |"
+    echo "-------------------------------------------------"
 
     read -p "输入您的选择 (0-9): " choice
     case $choice in
         1)
             while true; do
+                echo "============================================"
                 echo "请选择启动哪个服务器:"
                 echo "1. 启动 Cluster_1Master"
                 echo "2. 启动 Cluster_1Caves"
@@ -380,6 +646,7 @@ while true; do
             Update_dst # 更新服务器
             ;;
         3)
+            echo "============================================"
             echo "当前运行的服务器如下："
             screen -ls
             while true; do
@@ -415,35 +682,7 @@ while true; do
             done
             ;;
         4)
-            while true; do
-                echo "请选择一个选项:"
-                echo "1. 关闭存档1服务器"
-                echo "2. 关闭存档2服务器"
-                echo "0. 返回主菜单"
-                echo "要退出 screen 会话, 请按 Ctrl+A+D."
-
-                read -p "输入您的选择 (0-2): " view_choice
-                case $view_choice in
-                    1)
-                        echo "正在关闭存档1服务器.."
-                        screen -X -S Cluster_1Master quit
-                        screen -X -S Cluster_1Caves quit
-                        echo "存档1服务器已关闭."
-                        ;;
-                    2)
-                        echo "正在关闭存档2服务器.."
-                        screen -X -S Cluster_2Master quit
-                        screen -X -S Cluster_2Caves quit
-                        echo "存档2服务器已关闭."
-                        ;;
-                    0)
-                        break
-                        ;;
-                    *)
-                        echo "无效选择. 请重试."
-                        ;;
-                esac
-            done
+            save_server  # 保存服务器
             ;;
         5)
             UpdateMods  # 调用更新模组的函数
@@ -454,47 +693,54 @@ while true; do
 
 			# 如果 ms.sh 不存在，则下载并设置权限
 			if [ $? -ne 0 ]; then
-				wget -q -O ms.sh https://gitee.com/xiaochency/dst/raw/master/ms.sh && chmod 755 ms.sh
-				echo "已下载监测脚本，请重新执行命令"
-				exit 0  # 下载后退出，提示用户重新执行
-			fi
+                echo "正在下载监测脚本"
+                sleep 3  # 增加3秒的延迟
+                wget -q -O ms.sh https://gitee.com/xiaochency/dst/raw/master/ms.sh
+                if [ $? -ne 0 ]; then
+                    echo "下载 ms.sh 失败！请检查网络连接或 URL。"
+                    exit 1
+                fi
+                chmod 755 ms.sh
+                echo "已下载监测脚本，请重新执行命令"
+                exit 0
+            fi
 
 			# 如果 ms.sh 存在，则执行 ms_servers
 			ms_servers
             ;;
         7)
             while true; do
+                echo "============================================"
                 echo "请选择一个选项:"
                 echo "1. 备份存档"
                 echo "2. 删除存档"
-                echo "3. 返回主菜单"
+                echo "0. 返回主菜单"
+                read -p "输入您的选择 (0-2): " view_choice
 
-            read -p "输入您的选择 (1-3): " view_choice
-            case $view_choice in
-            1)
-                BackupSaves
-                ;;
-            2)
-                DeleteSaves
-                ;;
-            3)
-                break
-                ;;
-            *)
-                echo "无效选择. 请重试."
-                ;;
-            esac
+                case $view_choice in
+                    1)
+                        BackupSaves
+                        ;;
+                    2)
+                        DeleteSaves
+                        ;;
+                    0)
+                        break
+                        ;;    
+                    *)
+                        echo "无效选项，请重试"
+                        ;;
+                esac
             done
             ;;
         8)
-            echo "功能还在做."
+            server_console  # 控制台
             ;;     
         9)
             Install_dst  # 安装服务器
             ;;
         0)
-            echo "退出中..."
-            exit 0
+            others  # 更多
             ;;
         *)
             echo "无效选择. 请重试."
