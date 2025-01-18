@@ -19,11 +19,13 @@ function download() {
     local download_url="$1"
     local tries="$2"
     local timeout="$3"
+    local output_file="$4"  # 新增参数，用于指定输出文件名
 
-    wget -q --show-progress --tries="$tries" --timeout="$timeout" "$download_url"
+    wget -q --show-progress --tries="$tries" --timeout="$timeout" -O "$output_file" "$download_url"
 
     return $? # 返回 wget 的退出状态
 }
+
 
 # 设置虚拟内存
 function settingSwap() {
@@ -622,7 +624,7 @@ others() {
 #主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo "饥荒云服务器管理脚本1.2.0 By:xiaochency            "
+    echo "饥荒云服务器管理脚本1.2.1 By:xiaochency            "
     echo "-------------------------------------------------"
     echo "请选择一个选项:                                   "
     echo "-------------------------------------------------"
