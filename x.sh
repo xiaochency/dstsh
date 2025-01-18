@@ -19,9 +19,8 @@ function download() {
     local download_url="$1"
     local tries="$2"
     local timeout="$3"
-    local output_file="$4"  # 新增参数，用于指定输出文件名
 
-    wget -q --show-progress --tries="$tries" --timeout="$timeout" -O "$output_file" "$download_url"
+    wget -q --show-progress --tries="$tries" --timeout="$timeout" "$download_url"
 
     return $? # 返回 wget 的退出状态
 }
@@ -559,10 +558,10 @@ others() {
         case $option in
             1)
                 echo "正在更新脚本..."
-                # 备份原有的 x.sh 文件
+                # 检查 x.sh 是否存在，如果存在则重命名为 x.sh.bak
                 if [ -f "x.sh" ]; then
-                    cp -f "x.sh" "x.sh.bak"
-                    echo "已备份原有的 x.sh 文件为 x.sh.bak"
+                    mv "x.sh" "x.sh.bak"
+                    echo "已将原有的 x.sh 文件重命名为 x.sh.bak"
                 fi
                 # 使用 download 函数更新 x.sh
                 if download "https://gitee.com/xiaochency/dstsh/raw/master/x.sh" 5 10; then
@@ -575,7 +574,10 @@ others() {
                 ;;
             2)
                 echo "正在更新黑名单..."
-
+                if [ -f "blocklist.txt" ]; then
+                    mv "blocklist.txt" "blocklist.txt.bak"
+                    echo "已将原有的 blocklist.txt 文件重命名为 blocklist.txt.bak"
+                fi
                 # 使用 download 函数更新 blocklist.txt
                 if download "https://gitee.com/xiaochency/dstsh/raw/master/blocklist.txt" 5 10; then
                     cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_1
@@ -624,7 +626,7 @@ others() {
 #主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo "饥荒云服务器管理脚本1.2.1 By:xiaochency            "
+    echo "饥荒云服务器管理脚本1.2.2 By:xiaochency            "
     echo "-------------------------------------------------"
     echo "请选择一个选项:                                   "
     echo "-------------------------------------------------"
