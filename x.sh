@@ -15,32 +15,49 @@ function check_for_file() {
     return 0  # 返回 0 表示文件存在
 }
 
-#设置虚拟内存
-settingSwap() {
-# 创建一个2GB的交换文件
-SWAPFILE=/swapfile
-SWAPSIZE=2G
+function download() {
+    local download_url="$1"
+    local tries="$2"
+    local timeout="$3"
 
-# 检查是否已经存在交换文件
-if [ -f $SWAPFILE ]; then
-    echo "交换文件已存在，跳过创建步骤。"
-else
-    echo "创建交换文件..."
-    sudo fallocate -l $SWAPSIZE $SWAPFILE
-    sudo chmod 600 $SWAPFILE
-    sudo mkswap $SWAPFILE
-    sudo swapon $SWAPFILE
-    echo "交换文件创建并启用成功。"
-fi
+    wget -q --show-progress --tries="$tries" --timeout="$timeout" "$download_url"
 
-# 添加到 /etc/fstab 以便开机启动
-if ! grep -q "$SWAPFILE" /etc/fstab; then
-    echo "将交换文件添加到 /etc/fstab..."
-    echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
-    echo "交换文件已添加到开机启动。"
-else
-    echo "交换文件已在 /etc/fstab 中，跳过添加步骤。"
-fi
+    return $? # 返回 wget 的退出状态
+}
+
+# 设置虚拟内存
+function settingSwap() {
+    # 创建一个2GB的交换文件
+    SWAPFILE=/swapfile
+    SWAPSIZE=2G
+
+    # 检查是否已经存在交换文件
+    if [ -f $SWAPFILE ]; then
+        echo -e "\e[32m交换文件已存在，跳过创建步骤 \e[0m"
+    else
+        echo -e "\e[36m创建交换文件... \e[0m"
+        sudo fallocate -l $SWAPSIZE $SWAPFILE
+        sudo chmod 600 $SWAPFILE
+        sudo mkswap $SWAPFILE
+        sudo swapon $SWAPFILE
+        echo -e "\e[32m交换文件创建并启用成功 \e[0m"
+    fi
+
+    # 添加到 /etc/fstab 以便开机启动
+    if ! grep -q "$SWAPFILE" /etc/fstab; then
+        echo -e "\e[36m将交换文件添加到 /etc/fstab  \e[0m"
+        echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+        echo -e "\e[32m交换文件已添加到开机启动 \e[0m"
+    else
+        echo -e "\e[32m交换文件已在 /etc/fstab 中，跳过添加步骤 \e[0m"
+    fi
+
+    # 更改swap配置并持久化
+    sysctl -w vm.swappiness=20
+    sysctl -w vm.min_free_kbytes=100000
+    echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' > /etc/sysctl.d/dmp_swap.conf
+
+    echo -e "\e[32m系统swap设置成功 (System swap setting completed) \e[0m"
 }
 
 #安装服务器
@@ -525,7 +542,6 @@ save_server() {
     done
 }
 
-
 # 其他选项函数
 others() {
     while true; do
@@ -541,11 +557,13 @@ others() {
         case $option in
             1)
                 echo "正在更新脚本..."
-                sleep 3  # 增加3秒的延迟
-                wget -q -O x.sh https://cdn.jsdelivr.net/gh/xiaochency/dst@main/x.sh
-                
-                # 检查wget的返回值
-                if [ $? -eq 0 ]; then
+                # 备份原有的 x.sh 文件
+                if [ -f "x.sh" ]; then
+                    cp -f "x.sh" "x.sh.bak"
+                    echo "已备份原有的 x.sh 文件为 x.sh.bak"
+                fi
+                # 使用 download 函数更新 x.sh
+                if download "https://gitee.com/xiaochency/dstsh/raw/master/x.sh" 5 10; then
                     chmod 755 x.sh
                     echo "已成功更新脚本，请重新执行脚本"
                 else
@@ -555,13 +573,11 @@ others() {
                 ;;
             2)
                 echo "正在更新黑名单..."
-                sleep 3  # 增加3秒的延迟
-                wget -q -O blocklist.txt https://cdn.jsdelivr.net/gh/xiaochency/dst@main/blocklist.txt
-                cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_1
-                cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_2
 
-                # 检查wget的返回值
-                if [ $? -eq 0 ]; then
+                # 使用 download 函数更新 blocklist.txt
+                if download "https://gitee.com/xiaochency/dstsh/raw/master/blocklist.txt" 5 10; then
+                    cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_1
+                    cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_2
                     echo "已成功更新黑名单"
                 else
                     echo "更新黑名单失败，请检查网络连接或URL是否正确"
@@ -606,7 +622,7 @@ others() {
 #主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo "饥荒云服务器管理脚本1.1.9 By:xiaochency            "
+    echo "饥荒云服务器管理脚本1.2.0 By:xiaochency            "
     echo "-------------------------------------------------"
     echo "请选择一个选项:                                   "
     echo "-------------------------------------------------"
@@ -699,24 +715,25 @@ while true; do
             ;;
         6)
             # 检查 ms.sh 文件是否存在
-			check_for_file "ms.sh"
+            check_for_file "ms.sh"
 
-			# 如果 ms.sh 不存在，则下载并设置权限
-			if [ $? -ne 0 ]; then
+            # 如果 ms.sh 不存在，则下载并设置权限
+            if [ $? -ne 0 ]; then
                 echo "正在下载监测脚本"
-                sleep 3  # 增加3秒的延迟
-                wget -q -O ms.sh https://gitee.com/xiaochency/dst/raw/master/ms.sh
-                if [ $? -ne 0 ]; then
+
+                # 使用 download 函数下载 ms.sh
+                if download "https://gitee.com/xiaochency/dst/raw/master/ms.sh" 5 10; then
+                    chmod 755 ms.sh
+                    echo "已下载监测脚本，请重新执行命令"
+                    exit 0
+                else
                     echo "下载 ms.sh 失败！请检查网络连接或 URL。"
                     exit 1
                 fi
-                chmod 755 ms.sh
-                echo "已下载监测脚本，请重新执行命令"
-                exit 0
             fi
 
-			# 如果 ms.sh 存在，则执行 ms_servers
-			ms_servers
+            # 如果 ms.sh 存在，则执行 ms_servers
+            ms_servers
             ;;
         7)
             while true; do
