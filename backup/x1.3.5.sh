@@ -1079,7 +1079,7 @@ show_server_status() {
     # 第一步：获取本机公网IP
     local A1
     echo_info "正在获取本机公网IP..."
-    A1=$(curl -s --connect-timeout 5 https://ifconfig.io/ip 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
+    A1=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
     A1=$(echo "$A1" | tr -d '\n\r')  # 添加这行清理换行符
     
     if [[ "$A1" == "未知" ]]; then
@@ -1300,7 +1300,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.3.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.3.5 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"

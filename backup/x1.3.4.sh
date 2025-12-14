@@ -11,7 +11,6 @@ NC='\033[0m' # No Color
 # 目录定义
 install_dir="$HOME/dst"
 steamcmd_dir="$HOME/steamcmd"
-steam_dir="$HOME/Steam"
 
 # 输出函数
 function echo_error() { echo -e "${RED}错误: $@${NC}" >&2; }
@@ -123,39 +122,11 @@ Install_dst() {
     wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
     tar -xvzf steamcmd_linux.tar.gz
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
-    
-    echo_info "正在验证服务器安装..."
-    cd ~/dst/bin/ || {
-        echo
-        echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
-        echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
-        echo_error "======================================"
-        echo
-        fail "服务器安装失败，请重新安装！"
-    }
 
-    # 服务器安装验证通过后，执行MOD修复
-    if [ -d ~/dst/bin/ ]; then
-        echo_success "=================================================="
-        echo_success "✅ 服务器安装验证通过！"
-        echo_success "=================================================="
-        
-        echo_info "正在执行MOD修复..."
-        cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
-        cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
-        echo_success "MOD更新bug已修复"
-        
-        echo_success "=================================================="
-        echo_success "✅ Don't Starve Together 服务器安装完成！"
-        echo_success "=================================================="
-    else
-        echo_error "=================================================="
-        echo_error "✘ 服务器安装验证失败！"
-        echo_error "=================================================="
-        fail "服务器安装失败，请重新安装！"
-    fi
-    echo
+    cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
+    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
+    echo_success "MOD更新bug已修复"
+    echo_success "Don't Starve Together 服务器安装完成."
 }
 
 # 更新服务器
@@ -1079,7 +1050,7 @@ show_server_status() {
     # 第一步：获取本机公网IP
     local A1
     echo_info "正在获取本机公网IP..."
-    A1=$(curl -s --connect-timeout 5 https://ifconfig.io/ip 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
+    A1=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
     A1=$(echo "$A1" | tr -d '\n\r')  # 添加这行清理换行符
     
     if [[ "$A1" == "未知" ]]; then
@@ -1180,7 +1151,6 @@ others() {
         echo "2. 更新黑名单"
         echo "3. 删除所有MOD"
         echo "4. 删除DST服务器程序"
-        echo "5. 改善steam下载慢问题"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
 
@@ -1232,59 +1202,10 @@ others() {
                     echo_info "正在删除DST服务器程序..."
                     rm -rf "$install_dir"
                     rm -rf "$steamcmd_dir"
-                    rm -rf "$steam_dir"
                     echo_success "已成功删除DST服务器程序"
                 else
                     echo_warning "取消删除DST服务器程序"
                 fi
-                ;;
-            5)
-                echo_info "正在尝试改善steam下载速度..."
-                
-                # 备份原hosts文件
-                if [ ! -f /etc/hosts.bak ]; then
-                    sudo cp /etc/hosts /etc/hosts.bak
-                    echo_success "已备份原hosts文件为 /etc/hosts.bak"
-                fi
-                
-                # 检查是否已存在相关配置
-                if grep -q "steamcdn-a.akamaihd.net" /etc/hosts; then
-                    echo_warning "steamcdn-a.akamaihd.net 已在hosts文件中，跳过添加"
-                else
-                    echo "23.193.186.141 steamcdn-a.akamaihd.net" | sudo tee -a /etc/hosts
-                    echo_success "已添加 steamcdn-a.akamaihd.net 到hosts"
-                fi
-                
-                if grep -q "media.steampowered.com" /etc/hosts; then
-                    echo_warning "media.steampowered.com 已在hosts文件中，跳过添加"
-                else
-                    echo "23.32.241.96 media.steampowered.com" | sudo tee -a /etc/hosts
-                    echo_success "已添加 media.steampowered.com 到hosts"
-                fi
-                                
-                # 刷新DNS缓存
-                if command -v systemctl &> /dev/null; then
-                    if systemctl is-active --quiet systemd-resolved; then
-                        sudo systemctl restart systemd-resolved
-                        echo_success "已重启systemd-resolved服务"
-                    fi
-                fi
-                
-                # 测试连接
-                echo_info "测试连接到steam服务器..."
-                if ping -c 2 steamcdn-a.akamaihd.net &> /dev/null; then
-                    echo_success "✓ 连接测试成功！"
-                else
-                    echo_warning "⚠ 连接测试失败，但hosts已更新"
-                fi
-                
-                echo_success "=================================================="
-                echo_success "✅ Steam下载优化已完成！"
-                echo_success "=================================================="
-                echo_info "提示："
-                echo_info "1. 如果需要恢复原hosts文件，请执行：sudo cp /etc/hosts.bak /etc/hosts"
-                echo_info "2. 重新运行steamcmd或更新服务器以查看效果"
-                echo_success "=================================================="
                 ;;
             0)
                 echo_info "返回主菜单"
@@ -1300,7 +1221,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.3.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.3.4 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"

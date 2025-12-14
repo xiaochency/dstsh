@@ -11,7 +11,6 @@ NC='\033[0m' # No Color
 # 目录定义
 install_dir="$HOME/dst"
 steamcmd_dir="$HOME/steamcmd"
-steam_dir="$HOME/Steam"
 
 # 输出函数
 function echo_error() { echo -e "${RED}错误: $@${NC}" >&2; }
@@ -43,7 +42,7 @@ function download() {
 
 # 设置虚拟内存
 function settingSwap() {
-    SWAPFILE=/swap.img
+    SWAPFILE=/swapfile
     SWAPSIZE=2G
 
     if [ -f $SWAPFILE ]; then
@@ -88,22 +87,17 @@ Install_dst() {
     sudo apt-get install -y screen
     echo_success "环境依赖安装完毕"
 
-    mkdir -p ~/.klei/DoNotStarveTogether/backups/
     mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/Master
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/Caves
     touch ~/.klei/DoNotStarveTogether/Cluster_1/cluster_token.txt
     touch ~/.klei/DoNotStarveTogether/Cluster_1/adminlist.txt
     touch ~/.klei/DoNotStarveTogether/Cluster_1/blocklist.txt
     touch ~/.klei/DoNotStarveTogether/Cluster_1/whitelist.txt
     mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/Master
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/Caves
     touch ~/.klei/DoNotStarveTogether/Cluster_2/cluster_token.txt
     touch ~/.klei/DoNotStarveTogether/Cluster_2/adminlist.txt
     touch ~/.klei/DoNotStarveTogether/Cluster_2/blocklist.txt
     touch ~/.klei/DoNotStarveTogether/Cluster_2/whitelist.txt
-    echo_success "饥荒初始文件夹创建完成"
+    echo_success "饥荒存档文件夹创建完成"
 
     settingSwap
     echo_info "设置虚拟内存2GB"
@@ -123,39 +117,11 @@ Install_dst() {
     wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
     tar -xvzf steamcmd_linux.tar.gz
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
-    
-    echo_info "正在验证服务器安装..."
-    cd ~/dst/bin/ || {
-        echo
-        echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
-        echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
-        echo_error "======================================"
-        echo
-        fail "服务器安装失败，请重新安装！"
-    }
 
-    # 服务器安装验证通过后，执行MOD修复
-    if [ -d ~/dst/bin/ ]; then
-        echo_success "=================================================="
-        echo_success "✅ 服务器安装验证通过！"
-        echo_success "=================================================="
-        
-        echo_info "正在执行MOD修复..."
-        cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
-        cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
-        echo_success "MOD更新bug已修复"
-        
-        echo_success "=================================================="
-        echo_success "✅ Don't Starve Together 服务器安装完成！"
-        echo_success "=================================================="
-    else
-        echo_error "=================================================="
-        echo_error "✘ 服务器安装验证失败！"
-        echo_error "=================================================="
-        fail "服务器安装失败，请重新安装！"
-    fi
-    echo
+    cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
+    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
+    echo_success "MOD更新bug已修复"
+    echo_success "Don't Starve Together 服务器安装完成."
 }
 
 # 更新服务器
@@ -298,7 +264,6 @@ function start_server() {
         echo
         echo_error "======================================"
         echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
-        echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
         echo_error "======================================"
         echo
         return 1
@@ -416,7 +381,7 @@ RestoreSaves() {
     # 如果没有找到备份文件
     if [ ${#backup_files[@]} -eq 0 ]; then
         echo_error "未找到任何备份文件。请确保备份文件位于以下位置:"
-        echo "  - $HOME/.klei/DoNotStarveTogether/backups"
+        echo "  - $HOME/.klei/DoNotStarveTogether/"
         read -p "按回车键返回主菜单..."
         return
     fi
@@ -618,163 +583,6 @@ function run_monitoring() {
     "
 }
 
-# 设置服务器维护任务函数
-function setup_maintenance_task() {
-    local hour=""
-    
-    # 获取当前小时作为默认值
-    local default_hour=$(date +%H)
-    
-    echo_info "🕒 设置服务器维护任务"
-    echo_info "维护任务包括："
-    echo "  - 维护前5分钟发送公告"
-    echo "  - 维护前2分钟自动保存"
-    echo "  - 指定整点时间关闭所有服务器"
-    echo ""
-    
-    # 输入小时
-    while true; do
-        read -p "请输入维护时间的小时 (0-23) [默认: $default_hour]: " hour
-        if [[ -z "$hour" ]]; then
-            hour="$default_hour"
-        fi
-        
-        if [[ "$hour" =~ ^[0-9]+$ ]] && [ "$hour" -ge 0 ] && [ "$hour" -le 23 ]; then
-            break
-        else
-            echo_error "请输入0-23之间的有效数字"
-        fi
-    done
-    
-    # 固定分钟为0（整点）
-    local minute="00"
-    
-    # 格式化时间显示
-    local formatted_time=$(printf "%02d:%02d" "$hour" "$minute")
-    
-    # 计算提前时间（分钟固定为55和58）
-    local announce_minute="55"
-    local save_minute="58"
-    local announce_hour=$((hour - 1))
-    local save_hour=$((hour - 1))
-    
-    # 处理小时负数的情况（当hour=0时）
-    if [ $announce_hour -lt 0 ]; then
-        announce_hour=23
-    fi
-    
-    if [ $save_hour -lt 0 ]; then
-        save_hour=23
-    fi
-    
-    # 显示设置信息
-    echo ""
-    echo_success "📋 维护任务计划如下："
-    echo_success "  ⏰ 维护时间: $formatted_time (整点)"
-    echo_success "  📢 公告时间: $(printf "%02d:%02d" "$announce_hour" "$announce_minute") (提前5分钟)"
-    echo_success "  💾 保存时间: $(printf "%02d:%02d" "$save_hour" "$save_minute") (提前2分钟)"
-    echo ""
-    
-    # 确认设置
-    read -p "确认设置以上维护任务？(y/n): " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo_warning "已取消设置维护任务"
-        return
-    fi
-    
-    # 删除现有维护任务
-    remove_maintenance_task silent
-    
-    # 添加新的cron任务
-    local temp_cron=$(mktemp)
-    crontab -l 2>/dev/null > "$temp_cron"
-    
-    # 添加公告任务
-    echo "$announce_minute $announce_hour * * * if screen -list | grep -q 'Cluster_1Master'; then screen -S Cluster_1Master -p 0 -X stuff 'c_announce(\"服务器将于5分钟后维护重启\")\\n'; fi; if screen -list | grep -q 'Cluster_2Master'; then screen -S Cluster_2Master -p 0 -X stuff 'c_announce(\"服务器将于5分钟后维护重启\")\\n'; fi" >> "$temp_cron"
-    
-    # 添加保存任务
-    echo "$save_minute $save_hour * * * if screen -list | grep -q 'Cluster_1Master'; then screen -S Cluster_1Master -p 0 -X stuff 'c_save()\\n'; fi; if screen -list | grep -q 'Cluster_2Master'; then screen -S Cluster_2Master -p 0 -X stuff 'c_save()\\n'; fi" >> "$temp_cron"
-    
-    # 添加关闭服务器任务
-    echo "$minute $hour * * * screen -X -S Cluster_1Master quit && screen -X -S Cluster_1Caves quit && screen -X -S Cluster_2Master quit && screen -X -S Cluster_2Caves quit" >> "$temp_cron"
-    
-    # 安装新的cron任务
-    crontab "$temp_cron"
-    rm -f "$temp_cron"
-    
-    echo ""
-    echo_success "=================================================="
-    echo_success "✅ 服务器维护任务已成功设置！"
-    echo_success "=================================================="
-    echo_success "🕒 维护时间: 每天 $formatted_time (整点)"
-    echo_success "📢 提前公告: 每天 $(printf "%02d:%02d" "$announce_hour" "$announce_minute")"
-    echo_success "💾 自动保存: 每天 $(printf "%02d:%02d" "$save_hour" "$save_minute")"
-    echo_success "🛑 服务器关闭: 每天 $formatted_time"
-    echo_success "=================================================="
-    echo ""
-    
-    # 显示当前cron任务
-    show_maintenance_status
-}
-
-# 删除服务器维护任务函数
-function remove_maintenance_task() {
-    local silent="${1:-}"
-    
-    if [[ "$silent" != "silent" ]]; then
-        echo_info "正在删除服务器维护任务..."
-    fi
-    
-    # 创建临时cron文件，过滤掉维护任务
-    local temp_cron=$(mktemp)
-    crontab -l 2>/dev/null | grep -v -E '(Cluster_1Master|Cluster_2Master|服务器维护)' > "$temp_cron" || true
-    
-    # 如果文件为空，删除crontab
-    if [[ ! -s "$temp_cron" ]]; then
-        crontab -r 2>/dev/null || true
-    else
-        crontab "$temp_cron"
-    fi
-    
-    rm -f "$temp_cron"
-    
-    if [[ "$silent" != "silent" ]]; then
-        echo_success "✅ 所有服务器维护任务已删除"
-        show_maintenance_status
-    fi
-}
-
-# 显示维护任务状态函数
-function show_maintenance_status() {
-    echo_info "📋 当前维护任务状态:"
-    
-    local has_tasks=0
-    local cron_list=$(crontab -l 2>/dev/null || echo "")
-    
-    if [[ -z "$cron_list" ]]; then
-        echo_warning "  暂无维护任务"
-        return
-    fi
-    
-    # 查找维护相关任务
-    while IFS= read -r line; do
-        if [[ "$line" =~ (Cluster_1Master|Cluster_2Master) ]]; then
-            has_tasks=1
-            if [[ "$line" =~ c_announce ]]; then
-                echo_success "  📢 公告任务: $(echo "$line" | cut -d' ' -f1,2)* * *"
-            elif [[ "$line" =~ c_save ]]; then
-                echo_success "  💾 保存任务: $(echo "$line" | cut -d' ' -f1,2)* * *"
-            elif [[ "$line" =~ screen.*quit ]]; then
-                echo_success "  🛑 关闭任务: $(echo "$line" | cut -d' ' -f1,2)* * *"
-            fi
-        fi
-    done <<< "$cron_list"
-    
-    if [[ $has_tasks -eq 0 ]]; then
-        echo_warning "  暂无维护任务"
-    fi
-}
-
 # 监控崩溃重启
 function ms_servers() {
     # 检查并确保 ms.sh 存在
@@ -797,11 +605,10 @@ function ms_servers() {
         echo "2. 监控Cluster_2崩溃重启"
         echo "3. 关闭监控脚本"
         echo "4. 设置服务器维护任务"
-        echo "5. 删除服务器维护任务"
-        echo "6. 查看当前维护任务状态"
+        echo "5. 关闭服务器维护任务"
         echo "0. 返回主菜单"
 
-        read -p "请输入选项 (0-6): " choice
+        read -p "请输入选项 (0/1/2/3/4/5): " choice
 
         case $choice in
             1)
@@ -817,13 +624,17 @@ function ms_servers() {
                 echo_success "已关闭监控脚本..."
                 ;;
             4)
-                setup_maintenance_task
+                (crontab -l; echo "0 6 * * * screen -X -S Cluster_1Master quit && screen -X -S Cluster_1Caves quit && screen -X -S Cluster_2Master quit && screen -X -S Cluster_2Caves quit") | crontab -
+                (crontab -l; echo "55 5 * * * if screen -list | grep -q 'Cluster_1Master'; then screen -S Cluster_1Master -p 0 -X stuff 'c_announce(\"服务器将于5分钟后维护重启\")\n'; fi; if screen -list | grep -q 'Cluster_2Master'; then screen -S Cluster_2Master -p 0 -X stuff 'c_announce(\"服务器将于5分钟后维护重启\")\n'; fi") | crontab -
+                (crontab -l; echo "58 5 * * * if screen -list | grep -q 'Cluster_1Master'; then screen -S Cluster_1Master -p 0 -X stuff 'c_save()\n'; fi; if screen -list | grep -q 'Cluster_2Master'; then screen -S Cluster_2Master -p 0 -X stuff 'c_save()\n'; fi") | crontab -
+
+                echo_success "已设置服务器维护任务，每天早上6点执行！"
+                echo_success "已设置维护通知任务，每天早上5点55分发送！"
+                echo_success "已设置保存命令任务，每天早上5点58分发送！"
                 ;;
             5)
-                remove_maintenance_task
-                ;;
-            6)
-                show_maintenance_status
+                crontab -r
+                echo_success "已删除所有服务器维护任务"
                 ;;
             0)
                 echo_info "返回主菜单..."
@@ -1007,7 +818,7 @@ shutdown_server() {
         echo "1. 关闭Cluster_1服务器"
         echo "2. 关闭Cluster_2服务器"
         echo "0. 返回主菜单"
-        echo_warning "在关闭服务器前会自动保存！"
+        echo_warning "要退出 screen 会话, 请按 Ctrl+A+D."
 
         read -p "输入您的选择 (0-2): " view_choice
         case $view_choice in
@@ -1040,7 +851,7 @@ shutdown_server() {
 }
 
 # 服务器状态
-show_server_status() {
+function show_server_status() {
     echo "=== 当前服务器状态 ==="
     local clusters=("Cluster_1" "Cluster_2")
     local shards=("Master" "Caves")
@@ -1079,8 +890,7 @@ show_server_status() {
     # 第一步：获取本机公网IP
     local A1
     echo_info "正在获取本机公网IP..."
-    A1=$(curl -s --connect-timeout 5 https://ifconfig.io/ip 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
-    A1=$(echo "$A1" | tr -d '\n\r')  # 添加这行清理换行符
+    A1=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
     
     if [[ "$A1" == "未知" ]]; then
         echo_warning "无法获取公网IP，请检查网络连接"
@@ -1090,84 +900,68 @@ show_server_status() {
     
     # 检查Cluster_1的配置
     local server_ini_file="$HOME/.klei/DoNotStarveTogether/Cluster_1/Master/server.ini"
-    local A2="10999"  # 默认端口
+    local A2=""
     local cluster1_available=0
     
     if [[ -f "$server_ini_file" ]]; then
-        local port_line=$(grep -E '^server_port\s*=' "$server_ini_file" | head -1)
-        if [[ -n "$port_line" ]]; then
-            A2=$(echo "$port_line" | sed 's/.*=\s*//' | tr -d ' ')
+        A2=$(grep -E '^server_port\s*=' "$server_ini_file" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
+        
+        if [[ -n "$A2" ]]; then
             cluster1_available=1
         else
-            echo_warning "Cluster_1未找到server_port配置,使用默认端口10999"
+            echo_warning "Cluster_1未找到server_port配置，使用默认端口10999"
+            A2="10999"
         fi
     else
-        echo_warning "Cluster_1的server.ini文件不存在,使用默认端口10999"
+        echo_warning "Cluster_1的server.ini文件不存在，使用默认端口10999"
+        A2="10999"
     fi
     
     # 检查Cluster_2的配置
     local server_ini_file2="$HOME/.klei/DoNotStarveTogether/Cluster_2/Master/server.ini"
-    local B2="10999"  # 默认端口
+    local B2=""
     local cluster2_available=0
     
     if [[ -f "$server_ini_file2" ]]; then
-        local port_line2=$(grep -E '^server_port\s*=' "$server_ini_file2" | head -1)
-        if [[ -n "$port_line2" ]]; then
-            B2=$(echo "$port_line2" | sed 's/.*=\s*//' | tr -d ' ')
+        B2=$(grep -E '^server_port\s*=' "$server_ini_file2" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
+        
+        if [[ -n "$B2" ]]; then
             cluster2_available=1
         else
-            echo_warning "Cluster_2未找到server_port配置,使用默认端口10999"
+            echo_warning "Cluster_2未找到server_port配置，使用默认端口10999"
+            B2="10999"
         fi
     else
-        echo_warning "Cluster_2的server.ini文件不存在,使用默认端口10999"
+        echo_warning "Cluster_2的server.ini文件不存在，使用默认端口10999"
+        B2="10999"
     fi
 
     # 打印直连命令
     if [[ "$A1" != "未知" ]]; then
-    echo
-    echo_success "════════════════════════════════════════════"
-    
-    # 清理IP地址和端口号
-    local clean_A1=$(echo "$A1" | tr -d '\n\r' | sed 's/[^0-9.]//g')
-    local clean_A2=$(echo "$A2" | tr -d '\n\r' | sed 's/[^0-9]//g')
-    local clean_B2=$(echo "$B2" | tr -d '\n\r' | sed 's/[^0-9]//g')
-    
-    # 构建直连命令
-    local connect_cmd1=$(printf 'c_connect("%s", %s)' "$clean_A1" "$clean_A2")
-    local connect_cmd2=$(printf 'c_connect("%s", %s)' "$clean_A1" "$clean_B2")
-    
-    # Cluster_1 显示
-    if [[ $cluster1_available -eq 1 ]]; then
-        if [[ $cluster1_running -eq 1 ]]; then
-            echo_success "📡 Cluster_1 [🟢 运行中]"
-        else
-            echo_warning "📡 Cluster_1 [🔴 未运行]"
+        echo
+        echo_success "=================================================="
+        
+        # 只显示有配置且正在运行的集群
+        if [[ $cluster1_running -eq 1 && $cluster1_available -eq 1 ]]; then
+            echo_success "Cluster_1直连：c_connect(\"$A1\", $A2)"
+        elif [[ $cluster1_available -eq 1 ]]; then
+            echo_warning "Cluster_1直连：c_connect(\"$A1\", $A2) [服务器未运行]"
         fi
-        echo "$connect_cmd1"
-        echo  # 空行分隔
-    fi
-    
-    # Cluster_2 显示
-    if [[ $cluster2_available -eq 1 ]]; then
-        if [[ $cluster2_running -eq 1 ]]; then
-            echo_success "📡 Cluster_2 [🟢 运行中]"
-        else
-            echo_warning "📡 Cluster_2 [🔴 未运行]"
+        
+        if [[ $cluster2_running -eq 1 && $cluster2_available -eq 1 ]]; then
+            echo_success "Cluster_2直连：c_connect(\"$A1\", $B2)"
+        elif [[ $cluster2_available -eq 1 ]]; then
+            echo_warning "Cluster_2直连：c_connect(\"$A1\", $B2) [服务器未运行]"
         fi
-        echo "$connect_cmd2"
-        echo  # 空行分隔
-    fi
-    
-    # 如果没有可用的集群配置
-    if [[ $cluster1_available -eq 0 && $cluster2_available -eq 0 ]]; then
-        echo_warning "未找到有效的服务器配置"
-    elif [[ $cluster1_running -eq 0 && $cluster2_running -eq 0 ]]; then
-        echo_warning "当前没有运行中的服务器，以上为预设直连命令"
-    fi
-    
-    echo_success "════════════════════════════════════════════"
-    echo_info "💡 在游戏大厅界面按 ~ 键打开控制台"
-    echo_info "💡 输入以上命令即可直连服务器"
+        
+        if [[ $cluster1_running -eq 0 && $cluster2_running -eq 0 ]]; then
+            echo_warning "当前没有运行中的服务器，以上为预设直连命令"
+        fi
+        
+        echo_success "=================================================="
+        echo_info "在游戏控制台中按~键打开控制台，输入以上命令即可直连"
+    else
+        echo_error "无法获取公网IP，请检查网络连接后重试"
     fi
 }
 
@@ -1180,7 +974,6 @@ others() {
         echo "2. 更新黑名单"
         echo "3. 删除所有MOD"
         echo "4. 删除DST服务器程序"
-        echo "5. 改善steam下载慢问题"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
 
@@ -1232,59 +1025,10 @@ others() {
                     echo_info "正在删除DST服务器程序..."
                     rm -rf "$install_dir"
                     rm -rf "$steamcmd_dir"
-                    rm -rf "$steam_dir"
                     echo_success "已成功删除DST服务器程序"
                 else
                     echo_warning "取消删除DST服务器程序"
                 fi
-                ;;
-            5)
-                echo_info "正在尝试改善steam下载速度..."
-                
-                # 备份原hosts文件
-                if [ ! -f /etc/hosts.bak ]; then
-                    sudo cp /etc/hosts /etc/hosts.bak
-                    echo_success "已备份原hosts文件为 /etc/hosts.bak"
-                fi
-                
-                # 检查是否已存在相关配置
-                if grep -q "steamcdn-a.akamaihd.net" /etc/hosts; then
-                    echo_warning "steamcdn-a.akamaihd.net 已在hosts文件中，跳过添加"
-                else
-                    echo "23.193.186.141 steamcdn-a.akamaihd.net" | sudo tee -a /etc/hosts
-                    echo_success "已添加 steamcdn-a.akamaihd.net 到hosts"
-                fi
-                
-                if grep -q "media.steampowered.com" /etc/hosts; then
-                    echo_warning "media.steampowered.com 已在hosts文件中，跳过添加"
-                else
-                    echo "23.32.241.96 media.steampowered.com" | sudo tee -a /etc/hosts
-                    echo_success "已添加 media.steampowered.com 到hosts"
-                fi
-                                
-                # 刷新DNS缓存
-                if command -v systemctl &> /dev/null; then
-                    if systemctl is-active --quiet systemd-resolved; then
-                        sudo systemctl restart systemd-resolved
-                        echo_success "已重启systemd-resolved服务"
-                    fi
-                fi
-                
-                # 测试连接
-                echo_info "测试连接到steam服务器..."
-                if ping -c 2 steamcdn-a.akamaihd.net &> /dev/null; then
-                    echo_success "✓ 连接测试成功！"
-                else
-                    echo_warning "⚠ 连接测试失败，但hosts已更新"
-                fi
-                
-                echo_success "=================================================="
-                echo_success "✅ Steam下载优化已完成！"
-                echo_success "=================================================="
-                echo_info "提示："
-                echo_info "1. 如果需要恢复原hosts文件，请执行：sudo cp /etc/hosts.bak /etc/hosts"
-                echo_info "2. 重新运行steamcmd或更新服务器以查看效果"
-                echo_success "=================================================="
                 ;;
             0)
                 echo_info "返回主菜单"
@@ -1300,7 +1044,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.3.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.2.5 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"
