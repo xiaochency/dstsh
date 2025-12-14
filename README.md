@@ -28,7 +28,7 @@
 **安装步骤**
 1. **下载脚本并赋予权限**
    ```bash
-   wget -q -O x.sh https://gitee.com/xiaochency/dstsh/raw/master/x.sh && chmod 755 x.sh
+   wget -q -O x.sh https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh && chmod 755 x.sh
 2. **执行脚本**
    ```bash
    ./x.sh

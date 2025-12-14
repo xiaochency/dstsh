@@ -781,7 +781,7 @@ function ms_servers() {
     check_for_file "ms.sh"
     if [ $? -ne 0 ]; then
         echo_info "正在下载监测脚本"
-        if download "https://gitee.com/xiaochency/dst/raw/master/ms.sh" 5 10; then
+        if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
             chmod 755 ms.sh
             echo_success "已下载监测脚本，继续执行监控功能"
         else
@@ -1191,7 +1191,7 @@ others() {
                     mv "x.sh" "x.sh.bak"
                     echo_warning "已将原有的 x.sh 文件重命名为 x.sh.bak"
                 fi
-                if download "https://gitee.com/xiaochency/dstsh/raw/master/x.sh" 5 10; then
+                if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh" 5 10; then
                     chmod 755 x.sh
                     echo_success "已成功更新脚本，请重新执行脚本"
                 else
@@ -1205,7 +1205,7 @@ others() {
                     mv "blocklist.txt" "blocklist.txt.bak"
                     echo_warning "已将原有的 blocklist.txt 文件重命名为 blocklist.txt.bak"
                 fi
-                if download "https://gitee.com/xiaochency/dstsh/raw/master/blocklist.txt" 5 10; then
+                if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt" 5 10; then
                     cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_1
                     cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_2
                     echo_success "已成功更新黑名单"
@@ -1300,7 +1300,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.3.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.3.7 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"
