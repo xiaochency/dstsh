@@ -81,8 +81,15 @@ Install_dst() {
     fi
 
     echo_info "正在安装 Don't Starve Together 服务器..."
+    sudo dpkg --add-architecture i386
     sudo apt-get update
-    sudo apt-get install libstdc++6 libgcc1 libcurl4-gnutls-dev screen -y
+    sudo apt-get install -y libcurl4-gnutls-dev:i386
+    sudo apt-get install -y lib32gcc1
+    sudo apt-get install -y lib32stdc++6
+    sudo apt-get install -y libcurl4-gnutls-dev
+    sudo apt-get install -y libgcc1
+    sudo apt-get install -y libstdc++6
+    sudo apt-get install -y screen
     echo_success "环境依赖安装完毕"
 
     mkdir -p ~/.klei/DoNotStarveTogether/backups/
