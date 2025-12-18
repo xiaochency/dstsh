@@ -83,8 +83,13 @@ Install_dst() {
     echo_info "正在安装 Don't Starve Together 服务器..."
     sudo dpkg --add-architecture i386
     sudo apt-get update
-    sudo apt-get install libstdc++6:i386 libgcc1:i386 libcurl4-gnutls-dev:i386 screen -y
-    sudo apt-get install libstdc++6 libgcc1 libcurl4-gnutls-dev -y
+    sudo apt-get install -y libcurl4-gnutls-dev:i386
+    sudo apt-get install -y lib32gcc1
+    sudo apt-get install -y lib32stdc++6
+    sudo apt-get install -y libcurl4-gnutls-dev
+    sudo apt-get install -y libgcc1
+    sudo apt-get install -y libstdc++6
+    sudo apt-get install -y screen
     echo_success "环境依赖安装完毕"
 
     mkdir -p ~/.klei/DoNotStarveTogether/backups/
@@ -121,42 +126,69 @@ Install_dst() {
 
     wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
     tar -xvzf steamcmd_linux.tar.gz
-    ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     
-    echo_info "正在验证服务器安装..."
-    cd ~/dst/bin/ || {
-        echo
-        echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
-        echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
-        echo_error "======================================"
-        echo
-        cd "$HOME" #返回root根目录
-        fail "服务器安装失败，请重新安装！"
-    }
+    # 添加重试机制
+    local install_success=false
+    local retry_count=0
+    local max_retries=5
+    
+    while [ "$install_success" = false ] && [ $retry_count -lt $max_retries ]; do
+        echo_info "正在尝试安装 DST 服务器 (尝试 $((retry_count + 1))/$max_retries)..."
+        
+        ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
+        
+        echo_info "正在验证服务器安装..."
+        cd ~/dst/bin64/ 2>/dev/null
+        if [ $? -eq 0 ]; then
+            # 服务器安装验证通过后，执行MOD修复
+            if [ -d ~/dst/bin64/ ]; then
+                echo_success "=================================================="
+                echo_success "✅ 服务器安装验证通过！"
+                echo_success "=================================================="
+                
+                echo_info "正在执行MOD修复..."
+                cp ~/steamcmd/linux64/steamclient.so ~/dst/bin64/lib64/ 2>/dev/null
+                echo_success "MOD更新bug已修复"
+                
+                echo_success "=================================================="
+                echo_success "✅ Don't Starve Together 服务器安装完成！"
+                echo_success "=================================================="
+                install_success=true
+            else
+                echo_error "=================================================="
+                echo_error "✘✘ 服务器安装验证失败，准备重试..."
+                echo_error "=================================================="
+                install_success=false
+            fi
+        else
+            echo
+            echo_error "======================================"
+            echo_error "✘✘ 无法进入服务器目录: ~/dst/bin64/"
+            echo_error "✘✘ 服务器安装失败，准备重试..."
+            echo_error "======================================"
+            echo
+            install_success=false
+        fi
+        
+        if [ "$install_success" = false ]; then
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo_warning "等待 6 秒后重试..."
+                sleep 6
+                # 清理可能的残留文件
+                # rm -rf "$install_dir" 2>/dev/null
+                cd ~/steamcmd
+            else
+                echo_error "=================================================="
+                echo_error "✘✘✘ 已达到最大重试次数 ($max_retries)，安装失败！"
+                echo_error "请检查网络连接或手动安装。"
+                echo_error "=================================================="
+                cd "$HOME"
+                fail "服务器安装失败，请检查网络连接后重试！"
+            fi
+        fi
+    done
 
-    # 服务器安装验证通过后，执行MOD修复
-    if [ -d ~/dst/bin/ ]; then
-        echo_success "=================================================="
-        echo_success "✅ 服务器安装验证通过！"
-        echo_success "=================================================="
-        
-        echo_info "正在执行MOD修复..."
-        cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
-        cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
-        cp ~/steamcmd/linux64/steamclient.so ~/dst/bin64/lib64/
-        echo_success "MOD更新bug已修复"
-        
-        echo_success "=================================================="
-        echo_success "✅ Don't Starve Together 服务器安装完成！"
-        echo_success "=================================================="
-    else
-        echo_error "=================================================="
-        echo_error "✘ 服务器安装验证失败！"
-        echo_error "=================================================="
-        cd "$HOME" #返回root根目录
-        fail "服务器安装失败，请重新安装！"
-    fi
     cd "$HOME" #返回root根目录
     echo
 }
@@ -167,7 +199,7 @@ Update_dst() {
     cd "$steamcmd_dir" || fail
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     echo_success "服务器更新完成,请重新执行脚本"
-    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
+    cp ~/steamcmd/linux64/steamclient.so ~/dst/bin64/lib64/
     echo_success "MOD更新bug已修复"
 }
 
@@ -249,7 +281,7 @@ function UpdateMods() {
 }
 
 # 启动服务器64bit
-function start_server64() {
+function start_server() {
     local cluster=$1
     local shard=$2
     local screen_name="$cluster$shard"
@@ -308,98 +340,7 @@ function start_server64() {
     }
     
     echo_info "🚀 正在启动 $screen_name 服务器..."
-    screen -dmS "$screen_name" ./dontstarve_dedicated_server_nullrenderer_x64 -console -cluster "$cluster" -shard "$shard"
-    
-    # 添加延迟确保进程创建
-    sleep 1
-    
-    # 醒目显示启动结果
-    if screen -list | grep -q "$screen_name"; then
-        echo
-        echo_success "=================================================="
-        echo_success "✔✔✔ $screen_name 服务器已成功启动! ✔✔✔"
-        echo_success "=================================================="
-        echo_success "📺 返回主菜单选项3可以查看已启动的服务器"
-        echo_success "📺 返回主菜单选项3可以查看已启动的服务器"
-        echo_success "🛑 如果未找到程序，请查看服务器日志"
-        echo_success "=================================================="
-        echo
-    else
-        echo
-        echo_error "=================================================="
-        echo_error "✘✘✘ $screen_name 服务器启动失败! ✘✘✘"
-        echo_error "=================================================="
-        echo_error "❗ 请检查以下可能原因:"
-        echo_error "  1. 饥荒程序是否正确安装"
-        echo_error "  2. 存档配置目录是否存在"
-        echo_error "  3. 系统资源是否充足"
-        echo_error "=================================================="
-        echo
-        return 1
-    fi
-}
-
-#启动服务器32bit
-function start_server32() {
-    local cluster=$1
-    local shard=$2
-    local screen_name="$cluster$shard"
-    local token_file="$HOME/.klei/DoNotStarveTogether/$cluster/cluster_token.txt"
-    local cluster_dir="$HOME/.klei/DoNotStarveTogether/$cluster"
-
-    # 创建集群目录（如果不存在）
-    if [ ! -d "$cluster_dir" ]; then
-        echo_info "📁 集群目录不存在，正在创建: $cluster_dir"
-        mkdir -p "$cluster_dir" || {
-            echo_error "✘ 无法创建集群目录: $cluster_dir"
-            return 1
-        }
-        echo_success "✔ 集群目录创建成功！"
-    fi
-
-    # 检查令牌文件
-    if [[ ! -f "$token_file" ]] || [[ ! -s "$token_file" ]]; then
-        echo_warning "⚠️ 令牌文件不存在或为空: $token_file"
-        echo_info "📋 请粘贴您的服务器令牌（一行内容），完成后按 Ctrl+D 保存:"
-        
-        # 创建令牌文件
-        cat > "$token_file" || {
-            echo_error "✘ 无法创建令牌文件: $token_file"
-            return 1
-        }
-        
-        # 再次检查令牌文件
-        if [[ ! -s "$token_file" ]]; then
-            echo_error "✘ 令牌文件仍然为空，无法启动服务器"
-            return 1
-        fi
-        
-        echo_success "✔ 令牌文件已创建并保存！"
-    fi
-
-    # 检查服务器是否已在运行
-    if screen -list | grep -q "$screen_name"; then
-        echo
-        echo_warning "======================================"
-        echo_warning "⚠️ $screen_name 服务器已经在运行."
-        echo_warning "======================================"
-        echo
-        return 0
-    fi
-
-    # 启动服务器
-    cd ~/dst/bin/ || {
-        echo
-        echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
-        echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
-        echo_error "======================================"
-        echo
-        return 1
-    }
-    
-    echo_info "🚀 正在启动 $screen_name 服务器..."
-    screen -dmS "$screen_name" ./dontstarve_dedicated_server_nullrenderer -console -cluster "$cluster" -shard "$shard"
+    screen -dmS "$screen_name" ./dontstarve_dedicated_server_nullrenderer_x64 -console_enabled -cluster "$cluster" -shard "$shard"
     
     # 添加延迟确保进程创建
     sleep 1
@@ -1394,7 +1335,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理64bit脚本1.0.0 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理64bit脚本1.0.1 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"
