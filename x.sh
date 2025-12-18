@@ -126,41 +126,68 @@ Install_dst() {
 
     wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
     tar -xvzf steamcmd_linux.tar.gz
-    ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     
-    echo_info "正在验证服务器安装..."
-    cd ~/dst/bin/ || {
-        echo
-        echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
-        echo_error "✘ 服务器安装失败，请重新安装！"
-        echo_error "======================================"
-        echo
-        cd "$HOME" #返回root根目录
-        fail "服务器安装失败，请重新安装！"
-    }
-
-    # 服务器安装验证通过后，执行MOD修复
-    if [ -d ~/dst/bin/ ]; then
-        echo_success "=================================================="
-        echo_success "✅ 服务器安装验证通过！"
-        echo_success "=================================================="
+    # 添加重试机制
+    local install_success=false
+    local retry_count=0
+    local max_retries=5
+    
+    while [ "$install_success" = false ] && [ $retry_count -lt $max_retries ]; do
+        echo_info "正在尝试安装 DST 服务器 (尝试 $((retry_count + 1))/$max_retries)..."
         
-        echo_info "正在执行MOD修复..."
-        cp ~/steamcmd/linux32/libstdc++.so.6 ~/dst/bin/lib32/
-        cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
-        echo_success "MOD更新bug已修复"
+        ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
         
-        echo_success "=================================================="
-        echo_success "✅ Don't Starve Together 服务器安装完成！"
-        echo_success "=================================================="
-    else
-        echo_error "=================================================="
-        echo_error "✘ 服务器安装验证失败，请重新安装！"
-        echo_error "=================================================="
-        cd "$HOME" #返回root根目录
-        fail "服务器安装失败，请重新安装！"
-    fi
+        echo_info "正在验证服务器安装..."
+        cd ~/dst/bin/ 2>/dev/null
+        if [ $? -eq 0 ]; then
+            # 服务器安装验证通过后，执行MOD修复
+            if [ -d ~/dst/bin/ ]; then
+                echo_success "=================================================="
+                echo_success "✅ 服务器安装验证通过！"
+                echo_success "=================================================="
+                
+                echo_info "正在执行MOD修复..."
+                cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/ 2>/dev/null
+                echo_success "MOD更新bug已修复"
+                
+                echo_success "=================================================="
+                echo_success "✅ Don't Starve Together 服务器安装完成！"
+                echo_success "=================================================="
+                install_success=true
+            else
+                echo_error "=================================================="
+                echo_error "✘✘ 服务器安装验证失败，准备重试..."
+                echo_error "=================================================="
+                install_success=false
+            fi
+        else
+            echo
+            echo_error "======================================"
+            echo_error "✘✘ 无法进入服务器目录: ~/dst/bin/"
+            echo_error "✘✘ 服务器安装失败，准备重试..."
+            echo_error "======================================"
+            echo
+            install_success=false
+        fi
+        
+        if [ "$install_success" = false ]; then
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo_warning "等待 6 秒后重试..."
+                sleep 6
+                # 清理可能的残留文件
+                # rm -rf "$install_dir" 2>/dev/null
+                cd ~/steamcmd
+            else
+                echo_error "=================================================="
+                echo_error "✘✘✘ 已达到最大重试次数 ($max_retries)，安装失败！"
+                echo_error "请检查网络连接或手动安装。"
+                echo_error "=================================================="
+                cd "$HOME"
+                fail "服务器安装失败，请检查网络连接后重试！"
+            fi
+        fi
+    done
 
     cd "$HOME" #返回root根目录
     echo
@@ -1308,7 +1335,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.3.8 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.3.9 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"
