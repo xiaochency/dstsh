@@ -407,13 +407,8 @@ install_dst() {
     fi
 
     echo_cyan "正在安装 Don't Starve Together 服务器..."
-    sudo dpkg --add-architecture i386
     sudo apt-get update
-    apt install -y lib32gcc1     
-	apt install -y lib32gcc-s1
-    apt install -y libcurl4-gnutls-dev:i386
-    apt install -y screen
-	apt install -y unzip
+    sudo apt-get install libstdc++6 libgcc1 libcurl4-gnutls-dev screen unzip -y
     echo_green "环境依赖安装完毕"
 
     mkdir -p ~/.klei/DMP_BACKUP
