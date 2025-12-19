@@ -887,14 +887,23 @@ function show_maintenance_status() {
 function ms_servers() {
     # 确保 ms.sh 存在
     local ms_script="$HOME/ms.sh"
+    
+    # 检查并下载ms.sh
     if [ ! -f "$ms_script" ]; then
         echo_warning "监控脚本 ms.sh 不存在，正在下载..."
         if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
             echo_success "已成功下载监控脚本 ms.sh"
+            # 添加执行权限
+            chmod +x "$ms_script"
         else
-            echo_error "下载监控脚本 ms.sh失败，请检查网络连接或URL是否正确"
+            echo_error "下载监控脚本 ms.sh 失败，请检查网络连接或URL是否正确"
+            return 1
         fi
-        return 1
+    fi
+    
+    # 确保脚本有执行权限
+    if [ ! -x "$ms_script" ]; then
+        chmod +x "$ms_script"
     fi
     
     while true; do
@@ -947,13 +956,15 @@ function ms_servers() {
                 ;;
             0)
                 echo_info "返回主菜单..."
-                return
+                return 0
                 ;;
             *)
                 echo_error "无效的选项,请重试。"
                 ;;
         esac
         
+        # 添加一个暂停，让用户看到操作结果
+        read -p "按回车键继续..."
         echo ""
     done
 }
