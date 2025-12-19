@@ -138,16 +138,16 @@ Install_dst() {
         ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
         
         echo_info "正在验证服务器安装..."
-        cd ~/dst/bin64/ 2>/dev/null
+        cd ~/dst/bin/ 2>/dev/null
         if [ $? -eq 0 ]; then
             # 服务器安装验证通过后，执行MOD修复
-            if [ -d ~/dst/bin64/ ]; then
+            if [ -d ~/dst/bin/ ]; then
                 echo_success "=================================================="
                 echo_success "✅ 服务器安装验证通过！"
                 echo_success "=================================================="
                 
                 echo_info "正在执行MOD修复..."
-                cp ~/steamcmd/linux64/steamclient.so ~/dst/bin64/lib64/ 2>/dev/null
+                cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/ 2>/dev/null
                 echo_success "MOD更新bug已修复"
                 
                 echo_success "=================================================="
@@ -163,7 +163,7 @@ Install_dst() {
         else
             echo
             echo_error "======================================"
-            echo_error "✘✘ 无法进入服务器目录: ~/dst/bin64/"
+            echo_error "✘✘ 无法进入服务器目录: ~/dst/bin/"
             echo_error "✘✘ 服务器安装失败，准备重试..."
             echo_error "======================================"
             echo
@@ -199,7 +199,7 @@ Update_dst() {
     cd "$steamcmd_dir" || fail
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     echo_success "服务器更新完成,请重新执行脚本"
-    cp ~/steamcmd/linux64/steamclient.so ~/dst/bin64/lib64/
+    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
     echo_success "MOD更新bug已修复"
 }
 
@@ -280,7 +280,7 @@ function UpdateMods() {
     esac
 }
 
-# 启动服务器64bit
+# 启动服务器
 function start_server() {
     local cluster=$1
     local shard=$2
@@ -329,10 +329,10 @@ function start_server() {
     fi
 
     # 启动服务器
-    cd ~/dst/bin64/ || {
+    cd ~/dst/bin/ || {
         echo
         echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin64/"
+        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
         echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
         echo_error "======================================"
         echo
@@ -340,7 +340,7 @@ function start_server() {
     }
     
     echo_info "🚀 正在启动 $screen_name 服务器..."
-    screen -dmS "$screen_name" ./dontstarve_dedicated_server_nullrenderer_x64 -console_enabled -cluster "$cluster" -shard "$shard"
+    screen -dmS "$screen_name" ./dontstarve_dedicated_server_nullrenderer -console -cluster "$cluster" -shard "$shard"
     
     # 添加延迟确保进程创建
     sleep 1
@@ -1335,7 +1335,7 @@ others() {
 # 主菜单
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理64bit脚本1.0.1 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.0 By:xiaochency${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"

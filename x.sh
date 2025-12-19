@@ -13,6 +13,57 @@ install_dir="$HOME/dst"
 steamcmd_dir="$HOME/steamcmd"
 steam_dir="$HOME/Steam"
 
+# 版本配置文件
+VERSION_CONFIG_FILE="$HOME/.dst_version"
+# 默认版本为32位
+DEFAULT_VERSION="32"
+
+# 读取版本配置
+function read_version_config() {
+    if [ -f "$VERSION_CONFIG_FILE" ]; then
+        cat "$VERSION_CONFIG_FILE"
+    else
+        echo "$DEFAULT_VERSION"
+    fi
+}
+
+# 保存版本配置
+function save_version_config() {
+    echo "$1" > "$VERSION_CONFIG_FILE"
+}
+
+# 获取当前版本
+function get_current_version() {
+    read_version_config
+}
+
+# 切换版本
+function toggle_version() {
+    local current_version=$(get_current_version)
+    local new_version
+    
+    if [ "$current_version" = "32" ]; then
+        new_version="64"
+        echo_info "正在切换到64位版本..."
+    else
+        new_version="32"
+        echo_info "正在切换到32位版本..."
+    fi
+    
+    save_version_config "$new_version"
+    echo_success "已切换到${new_version}位版本"
+    
+    # 检查64位版本是否存在
+    if [ "$new_version" = "64" ]; then
+        if [ ! -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+            echo_warning "⚠️  64位服务器程序未安装，启动时将使用32位版本"
+            echo_info "请通过选项2更新服务器来安装64位版本"
+        else
+            echo_success "✅ 64位服务器程序已安装"
+        fi
+    fi
+}
+
 # 输出函数
 function echo_error() { echo -e "${RED}错误: $@${NC}" >&2; }
 function echo_success() { echo -e "${GREEN}$@${NC}"; }
@@ -92,27 +143,27 @@ Install_dst() {
     sudo apt-get install -y screen
     echo_success "环境依赖安装完毕"
 
-    mkdir -p ~/.klei/DoNotStarveTogether/backups/
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/Master
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_1/Caves
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/cluster_token.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/adminlist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/blocklist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_1/whitelist.txt
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/Master
-    mkdir -p ~/.klei/DoNotStarveTogether/Cluster_2/Caves
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/cluster_token.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/adminlist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/blocklist.txt
-    touch ~/.klei/DoNotStarveTogether/Cluster_2/whitelist.txt
+    mkdir -p $HOME/.klei/DoNotStarveTogether/backups/
+    mkdir -p $HOME/.klei/DoNotStarveTogether/Cluster_1/
+    mkdir -p $HOME/.klei/DoNotStarveTogether/Cluster_1/Master
+    mkdir -p $HOME/.klei/DoNotStarveTogether/Cluster_1/Caves
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_1/cluster_token.txt
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_1/adminlist.txt
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_1/blocklist.txt
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_1/whitelist.txt
+    mkdir -p $HOME/.klei/DoNotStarveTogether/Cluster_2/
+    mkdir -p $HOME/.klei/DoNotStarveTogether/Cluster_2/Master
+    mkdir -p $HOME/.klei/DoNotStarveTogether/Cluster_2/Caves
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_2/cluster_token.txt
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_2/adminlist.txt
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_2/blocklist.txt
+    touch $HOME/.klei/DoNotStarveTogether/Cluster_2/whitelist.txt
     echo_success "饥荒初始文件夹创建完成"
 
     settingSwap
     echo_info "设置虚拟内存2GB"
-    mkdir ~/steamcmd
-    cd ~/steamcmd
+    mkdir $HOME/steamcmd
+    cd $HOME/steamcmd
     
     file_name="steamcmd_linux.tar.gz"
     check_for_file "$file_name"
@@ -138,16 +189,17 @@ Install_dst() {
         ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
         
         echo_info "正在验证服务器安装..."
-        cd ~/dst/bin/ 2>/dev/null
+        cd $HOME/dst/bin/ 2>/dev/null
         if [ $? -eq 0 ]; then
             # 服务器安装验证通过后，执行MOD修复
-            if [ -d ~/dst/bin/ ]; then
+            if [ -d $HOME/dst/bin/ ]; then
                 echo_success "=================================================="
                 echo_success "✅ 服务器安装验证通过！"
                 echo_success "=================================================="
                 
                 echo_info "正在执行MOD修复..."
-                cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/ 2>/dev/null
+                cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
+                cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
                 echo_success "MOD更新bug已修复"
                 
                 echo_success "=================================================="
@@ -163,7 +215,7 @@ Install_dst() {
         else
             echo
             echo_error "======================================"
-            echo_error "✘✘ 无法进入服务器目录: ~/dst/bin/"
+            echo_error "✘✘ 无法进入服务器目录: $HOME/dst/bin/"
             echo_error "✘✘ 服务器安装失败，准备重试..."
             echo_error "======================================"
             echo
@@ -177,7 +229,7 @@ Install_dst() {
                 sleep 6
                 # 清理可能的残留文件
                 # rm -rf "$install_dir" 2>/dev/null
-                cd ~/steamcmd
+                cd $HOME/steamcmd
             else
                 echo_error "=================================================="
                 echo_error "✘✘✘ 已达到最大重试次数 ($max_retries)，安装失败！"
@@ -199,7 +251,8 @@ Update_dst() {
     cd "$steamcmd_dir" || fail
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     echo_success "服务器更新完成,请重新执行脚本"
-    cp ~/steamcmd/linux32/steamclient.so ~/dst/bin/lib32/
+    cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/
+    cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/
     echo_success "MOD更新bug已修复"
 }
 
@@ -287,6 +340,40 @@ function start_server() {
     local screen_name="$cluster$shard"
     local token_file="$HOME/.klei/DoNotStarveTogether/$cluster/cluster_token.txt"
     local cluster_dir="$HOME/.klei/DoNotStarveTogether/$cluster"
+    
+     # 获取当前版本配置
+    local current_version=$(get_current_version)
+    
+    # 检查64位版本是否存在
+    local has_64bit=0
+    if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+        has_64bit=1
+    fi
+    
+    # 选择版本
+    local version_choice=""
+    
+    # 如果配置为64位但64位程序不存在，自动降级为32位
+    if [ "$current_version" = "64" ] && [ $has_64bit -eq 0 ]; then
+        echo_warning "⚠️  64位版本不存在，自动使用32位版本启动"
+        version_choice="32"
+    else
+        version_choice="$current_version"
+    fi
+    
+    # 根据版本设置目录和可执行文件
+    local bin_dir=""
+    local exec_file=""
+    
+    if [ "$version_choice" = "64" ]; then
+        bin_dir="$HOME/dst/bin64/"
+        exec_file="./dontstarve_dedicated_server_nullrenderer_x64"
+        echo_info "使用64位版本启动服务器"
+    else
+        bin_dir="$HOME/dst/bin/"
+        exec_file="./dontstarve_dedicated_server_nullrenderer"
+        echo_info "使用32位版本启动服务器"
+    fi
 
     # 创建集群目录（如果不存在）
     if [ ! -d "$cluster_dir" ]; then
@@ -329,33 +416,35 @@ function start_server() {
     fi
 
     # 启动服务器
-    cd ~/dst/bin/ || {
+    eval cd $bin_dir || {
         echo
         echo_error "======================================"
-        echo_error "✘ 无法进入服务器目录: ~/dst/bin/"
+        echo_error "✘ 无法进入服务器目录: $bin_dir"
         echo_error "✘ 请检查是否已正确安装饥荒服务器程序"
         echo_error "======================================"
         echo
         return 1
     }
     
-    echo_info "🚀 正在启动 $screen_name 服务器..."
-    screen -dmS "$screen_name" ./dontstarve_dedicated_server_nullrenderer -console -cluster "$cluster" -shard "$shard"
+    echo_info "🚀 正在启动 $screen_name 服务器($version_choice位)..."
+    screen -dmS "$screen_name" $exec_file console_enabled -cluster "$cluster" -shard "$shard"
     
     # 添加延迟确保进程创建
-    sleep 1
+    sleep 2
     
     # 醒目显示启动结果
     if screen -list | grep -q "$screen_name"; then
         echo
         echo_success "=================================================="
-        echo_success "✔✔✔ $screen_name 服务器已成功启动! ✔✔✔"
+        echo_success "✔✔✔ $screen_name 服务器($version_choice位)已成功启动! ✔✔✔"
         echo_success "=================================================="
-        echo_success "📺 返回主菜单选项3可以查看已启动的服务器"
         echo_success "📺 返回主菜单选项3可以查看已启动的服务器"
         echo_success "🛑 如果未找到程序，请查看服务器日志"
         echo_success "=================================================="
         echo
+        
+        # 返回0表示成功，让调用者知道应该跳出循环
+        return 0
     else
         echo
         echo_error "=================================================="
@@ -637,22 +726,6 @@ function DeleteSaves() {
     done
 }
 
-# 定期检查
-function run_monitoring() {
-    local session_name=$1
-    local master_func=$2
-    local caves_func=$3
-
-    screen -dmS "$session_name" bash -c "
-        source ./ms.sh
-        while true; do
-            ${master_func}
-            ${caves_func}
-            sleep 180
-        done
-    "
-}
-
 # 设置服务器维护任务函数
 function setup_maintenance_task() {
     local hour=""
@@ -810,21 +883,90 @@ function show_maintenance_status() {
     fi
 }
 
+# 监控函数
+function monitor_ms_functions() {
+    # 使用全局版本配置
+    local default_version=$(get_current_version)
+    
+    # 检查64位版本是否存在
+    local has_64bit=0
+    if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+        has_64bit=1
+    fi
+    
+    # 如果配置为64位但程序不存在，自动降级
+    if [ "$default_version" = "64" ] && [ $has_64bit -eq 0 ]; then
+        default_version="32"
+    fi
+    
+    # 监控前置函数 - 使用配置的版本
+    function monitor_master1() {
+        if ! screen -list | grep -q "Cluster_1Master"; then
+            echo "Cluster_1Master 会话不存在，正在重新启动..."
+            
+            if [ "$default_version" = "64" ]; then
+                echo "使用64位版本重启 Cluster_1Master"
+                screen -dmS "Cluster_1Master" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Master"
+            else
+                echo "使用32位版本重启 Cluster_1Master"
+                screen -dmS "Cluster_1Master" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Master"
+            fi
+        else
+            echo "Cluster_1Master 会话已存在，无需重新启动。"
+        fi
+    }
+
+    function monitor_master2() {
+        if ! screen -list | grep -q "Cluster_2Master"; then
+            echo "Cluster_2Master 会话不存在，正在重新启动..."
+            
+            if [ "$default_version" = "64" ]; then
+                echo "使用64位版本重启 Cluster_2Master"
+                screen -dmS "Cluster_2Master" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Master"
+            else
+                echo "使用32位版本重启 Cluster_2Master"
+                screen -dmS "Cluster_2Master" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Master"
+            fi
+        else
+            echo "Cluster_2Master 会话已存在，无需重新启动。"
+        fi
+    }
+
+    function monitor_caves1() {
+        if ! screen -list | grep -q "Cluster_1Caves"; then
+            echo "Cluster_1Caves 会话不存在，正在重新启动..."
+            
+            if [ "$default_version" = "64" ]; then
+                echo "使用64位版本重启 Cluster_1Caves"
+                screen -dmS "Cluster_1Caves" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Caves"
+            else
+                echo "使用32位版本重启 Cluster_1Caves"
+                screen -dmS "Cluster_1Caves" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Caves"
+            fi
+        else
+            echo "Cluster_1Caves 会话已存在，无需重新启动。"
+        fi
+    }
+
+    function monitor_caves2() {
+        if ! screen-list | grep -q "Cluster_2Caves"; then
+            echo "Cluster_2Caves 会话不存在，正在重新启动..."
+            
+            if [ "$default_version" = "64" ]; then
+                echo "使用64位版本重启 Cluster_2Caves"
+                screen -dmS "Cluster_2Caves" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Caves"
+            else
+                echo "使用32位版本重启 Cluster_2Caves"
+                screen -dmS "Cluster_2Caves" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Caves"
+            fi
+        else
+            echo "Cluster_2Caves 会话已存在，无需重新启动。"
+        fi
+    }
+}
+
 # 监控崩溃重启
 function ms_servers() {
-    # 检查并确保 ms.sh 存在
-    check_for_file "ms.sh"
-    if [ $? -ne 0 ]; then
-        echo_info "正在下载监测脚本"
-        if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
-            chmod 755 ms.sh
-            echo_success "已下载监测脚本，继续执行监控功能"
-        else
-            echo_error "下载 ms.sh 失败！请检查网络连接或 URL。"
-            return 1
-        fi
-    fi
-
     while true; do
         echo "============================================"
         echo_success "请选择要执行的操作:"
@@ -840,16 +982,157 @@ function ms_servers() {
 
         case $choice in
             1)
-                run_monitoring "111" "monitor_master1" "monitor_caves1"
-                echo_success "已在后台启动 Cluster_1 监控脚本 (会话名: 111)"
+                # 使用全局版本配置
+                local monitor_version=$(get_current_version)
+                local has_64bit=0
+                
+                if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+                    has_64bit=1
+                fi
+                
+                # 如果配置为64位但程序不存在，自动降级
+                if [ "$monitor_version" = "64" ] && [ $has_64bit -eq 0 ]; then
+                    echo_warning "⚠️  64位版本不存在，自动使用32位版本监控"
+                    monitor_version="32"
+                fi
+                
+                echo_info "正在启动 Cluster_1 监控 (${monitor_version}位)..."
+                
+                # 加载监控函数，传递版本参数
+                monitor_ms_functions
+                
+                # 创建监控会话
+                screen -dmS "monitor_cluster1_${monitor_version}bit" bash -c "
+                    # 重新定义监控函数
+                    function monitor_master1() {
+                        if ! screen -list | grep -q 'Cluster_1Master'; then
+                            echo 'Cluster_1Master 会话不存在，正在重新启动...'
+                            if [ '$monitor_version' = '64' ]; then
+                                echo '使用64位版本重启 Cluster_1Master'
+                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Master
+                            else
+                                echo '使用32位版本重启 Cluster_1Master'
+                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Master
+                            fi
+                        else
+                            echo 'Cluster_1Master 会话已存在，无需重新启动。'
+                        fi
+                    }
+                    
+                    function monitor_caves1() {
+                        if ! screen -list | grep -q 'Cluster_1Caves'; then
+                            echo 'Cluster_1Caves 会话不存在，正在重新启动...'
+                            if [ '$monitor_version' = '64' ]; then
+                                echo '使用64位版本重启 Cluster_1Caves'
+                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Caves
+                            else
+                                echo '使用32位版本重启 Cluster_1Caves'
+                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Caves
+                            fi
+                        else
+                            echo 'Cluster_1Caves 会话已存在，无需重新启动。'
+                        fi
+                    }
+                    
+                    # 监控循环
+                    while true; do
+                        monitor_master1
+                        monitor_caves1
+                        sleep 300
+                    done
+                "
+                
+                if screen -list | grep -q "monitor_cluster1_${monitor_version}bit"; then
+                    echo_success "✅ 已在后台启动 Cluster_1 监控脚本 (${monitor_version}位)"
+                    echo_info "监控将自动检查并重启崩溃的服务器，检查间隔：300秒"
+                else
+                    echo_error "❌ Cluster_1 监控启动失败"
+                fi
                 ;;
             2)
-                run_monitoring "222" "monitor_master2" "monitor_caves2"
-                echo_success "已在后台启动 Cluster_2 监控脚本 (会话名: 222)"
+                # 使用全局版本配置
+                local monitor_version=$(get_current_version)
+                local has_64bit=0
+                
+                if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+                    has_64bit=1
+                fi
+                
+                # 如果配置为64位但程序不存在，自动降级
+                if [ "$monitor_version" = "64" ] && [ $has_64bit -eq 0 ]; then
+                    echo_warning "⚠️  64位版本不存在，自动使用32位版本监控"
+                    monitor_version="32"
+                fi
+                
+                echo_info "正在启动 Cluster_2 监控 (${monitor_version}位)..."
+                
+                # 加载监控函数，传递版本参数
+                monitor_ms_functions
+                
+                # 创建监控会话
+                screen -dmS "monitor_cluster2_${monitor_version}bit" bash -c "
+                    # 重新定义监控函数
+                    function monitor_master2() {
+                        if ! screen -list | grep -q 'Cluster_2Master'; then
+                            echo 'Cluster_2Master 会话不存在，正在重新启动...'
+                            if [ '$monitor_version' = '64' ]; then
+                                echo '使用64位版本重启 Cluster_2Master'
+                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Master
+                            else
+                                echo '使用32位版本重启 Cluster_2Master'
+                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Master
+                            fi
+                        else
+                            echo 'Cluster_2Master 会话已存在，无需重新启动。'
+                        fi
+                    }
+                    
+                    function monitor_caves2() {
+                        if ! screen -list | grep -q 'Cluster_2Caves'; then
+                            echo 'Cluster_2Caves 会话不存在，正在重新启动...'
+                            if [ '$monitor_version' = '64' ]; then
+                                echo '使用64位版本重启 Cluster_2Caves'
+                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Caves
+                            else
+                                echo '使用32位版本重启 Cluster_2Caves'
+                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Caves
+                            fi
+                        else
+                            echo 'Cluster_2Caves 会话已存在，无需重新启动。'
+                        fi
+                    }
+                    
+                    # 监控循环
+                    while true; do
+                        monitor_master2
+                        monitor_caves2
+                        sleep 300
+                    done
+                "
+                
+                if screen -list | grep -q "monitor_cluster2_${monitor_version}bit"; then
+                    echo_success "✅ 已在后台启动 Cluster_2 监控脚本 (${monitor_version}位)"
+                    echo_info "监控将自动检查并重启崩溃的服务器，检查间隔：300秒"
+                else
+                    echo_error "❌ Cluster_2 监控启动失败"
+                fi
                 ;;
             3)
-                screen -list | grep -E '111|222' | cut -d. -f1 | awk '{print $1}' | xargs kill
-                echo_success "已关闭监控脚本..."
+                echo_info "正在关闭监控脚本..."
+                local closed_count=0
+                
+                # 查找并关闭所有监控会话
+                for session in $(screen -list | grep -E "monitor_cluster1|monitor_cluster2" | cut -d. -f1); do
+                    screen -S "$session" -X quit
+                    echo_success "已关闭监控会话: $session"
+                    ((closed_count++))
+                done
+                
+                if [ $closed_count -eq 0 ]; then
+                    echo_warning "未找到运行中的监控会话"
+                else
+                    echo_success "✅ 已关闭 $closed_count 个监控会话"
+                fi
                 ;;
             4)
                 setup_maintenance_task
@@ -868,6 +1151,18 @@ function ms_servers() {
                 echo_error "无效的选项,请重试。"
                 ;;
         esac
+        
+        # 显示当前监控状态
+        echo ""
+        echo_info "📊 当前监控状态:"
+        local running_monitors=$(screen -list | grep -E "monitor_cluster1|monitor_cluster2" | wc -l)
+        if [ $running_monitors -gt 0 ]; then
+            echo_success "✅ 有 $running_monitors 个监控正在运行"
+            screen -list | grep -E "monitor_cluster1|monitor_cluster2"
+        else
+            echo_warning "⚠️  没有运行中的监控"
+        fi
+        echo ""
     done
 }
 
@@ -1209,6 +1504,8 @@ show_server_status() {
 # 其他选项函数
 others() {
     while true; do
+        # 显示当前版本状态
+        local current_version=$(get_current_version)
         echo "============================================"
         echo_info "其他选项"
         echo "1. 更新脚本"
@@ -1216,6 +1513,7 @@ others() {
         echo "3. 删除所有MOD"
         echo "4. 删除DST服务器程序"
         echo "5. 改善steam下载慢问题"
+        echo "6. 切换32位/64位版本 [当前: ${current_version}位]"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
 
@@ -1241,8 +1539,8 @@ others() {
                     echo_warning "已将原有的 blocklist.txt 文件重命名为 blocklist.txt.bak"
                 fi
                 if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt" 5 10; then
-                    cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_1
-                    cp -f blocklist.txt ~/.klei/DoNotStarveTogether/Cluster_2
+                    cp -f blocklist.txt $HOME/.klei/DoNotStarveTogether/Cluster_1
+                    cp -f blocklist.txt $HOME/.klei/DoNotStarveTogether/Cluster_2
                     echo_success "已成功更新黑名单"
                 else
                     echo_error "更新黑名单失败，请检查网络连接或URL是否正确"
@@ -1252,10 +1550,10 @@ others() {
                 read -p "您确定要删除所有MOD吗？(y/n): " confirm
                 if [[ $confirm == "y" || $confirm == "Y" ]]; then
                     echo_info "正在删除所有MOD..."
-                    rm -rf ~/dst/ugc_mods/Cluster_1/Master/content/322330/*
-                    rm -rf ~/dst/ugc_mods/Cluster_2/Master/content/322330/*
-                    rm -rf ~/dst/ugc_mods/Cluster_1/Caves/content/322330/*
-                    rm -rf ~/dst/ugc_mods/Cluster_2/Caves/content/322330/*
+                    rm -rf $HOME/dst/ugc_mods/Cluster_1/Master/content/322330/*
+                    rm -rf $HOME/dst/ugc_mods/Cluster_2/Master/content/322330/*
+                    rm -rf $HOME/dst/ugc_mods/Cluster_1/Caves/content/322330/*
+                    rm -rf $HOME/dst/ugc_mods/Cluster_2/Caves/content/322330/*
                     echo_success "已成功删除所有MOD"
                 else
                     echo_warning "取消删除所有MOD"
@@ -1321,6 +1619,28 @@ others() {
                 echo_info "2. 重新运行steamcmd或更新服务器以查看效果"
                 echo_success "=================================================="
                 ;;
+            6)
+                # 显示当前版本并切换
+                local current_version=$(get_current_version)
+                echo_info "当前版本: ${current_version}位"
+                
+                # 检查64位版本是否存在
+                local has_64bit=0
+                if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+                    has_64bit=1
+                fi
+                
+                if [ "$current_version" = "32" ] && [ $has_64bit -eq 0 ]; then
+                    echo_warning "⚠️  64位服务器程序未安装"
+                    echo_info "请先通过选项9安装服务器程序！"
+                    read -p "是否仍要切换到64位配置？(y/n): " confirm
+                    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+                        continue
+                    fi
+                fi
+                
+                toggle_version
+                ;;
             0)
                 echo_info "返回主菜单"
                 break
@@ -1334,8 +1654,11 @@ others() {
 
 # 主菜单
 while true; do
+    # 获取当前版本
+    current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.0 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.1 By:xiaochency${NC}"
+    echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"
@@ -1355,6 +1678,7 @@ while true; do
         1)
             while true; do
                 echo "============================================"
+                echo_info "当前版本: ${current_version}位"
                 echo_info "请选择启动哪个服务器:"
                 echo "1. 启动 Cluster_1Master"
                 echo "2. 启动 Cluster_1Caves"
@@ -1366,12 +1690,32 @@ while true; do
 
                 read -p "输入您的选择 (0-6): " view_choice
                 case $view_choice in
-                    1)  start_server "Cluster_1" "Master" ;;
-                    2)  start_server "Cluster_1" "Caves" ;;
-                    3)  start_server "Cluster_1" "Master"; start_server "Cluster_1" "Caves" ;;
-                    4)  start_server "Cluster_2" "Master" ;;
-                    5)  start_server "Cluster_2" "Caves" ;;
-                    6)  start_server "Cluster_2" "Master"; start_server "Cluster_2" "Caves" ;;
+                    1)  
+                        start_server "Cluster_1" "Master"
+                        break
+                        ;;
+                    2)  
+                        start_server "Cluster_1" "Caves"
+                        break
+                        ;;
+                    3)  
+                        start_server "Cluster_1" "Master"
+                        start_server "Cluster_1" "Caves"
+                        break
+                        ;;
+                    4)  
+                        start_server "Cluster_2" "Master"
+                        break
+                        ;;
+                    5)  
+                        start_server "Cluster_2" "Caves"
+                        break
+                        ;;
+                    6)  
+                        start_server "Cluster_2" "Master"
+                        start_server "Cluster_2" "Caves"
+                        break
+                        ;;
                     0)
                         break
                         ;;
