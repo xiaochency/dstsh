@@ -883,90 +883,20 @@ function show_maintenance_status() {
     fi
 }
 
-# 监控函数
-function monitor_ms_functions() {
-    # 使用全局版本配置
-    local default_version=$(get_current_version)
-    
-    # 检查64位版本是否存在
-    local has_64bit=0
-    if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
-        has_64bit=1
-    fi
-    
-    # 如果配置为64位但程序不存在，自动降级
-    if [ "$default_version" = "64" ] && [ $has_64bit -eq 0 ]; then
-        default_version="32"
-    fi
-    
-    # 监控前置函数 - 使用配置的版本
-    function monitor_master1() {
-        if ! screen -list | grep -q "Cluster_1Master"; then
-            echo "Cluster_1Master 会话不存在，正在重新启动..."
-            
-            if [ "$default_version" = "64" ]; then
-                echo "使用64位版本重启 Cluster_1Master"
-                screen -dmS "Cluster_1Master" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Master"
-            else
-                echo "使用32位版本重启 Cluster_1Master"
-                screen -dmS "Cluster_1Master" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Master"
-            fi
-        else
-            echo "Cluster_1Master 会话已存在，无需重新启动。"
-        fi
-    }
-
-    function monitor_master2() {
-        if ! screen -list | grep -q "Cluster_2Master"; then
-            echo "Cluster_2Master 会话不存在，正在重新启动..."
-            
-            if [ "$default_version" = "64" ]; then
-                echo "使用64位版本重启 Cluster_2Master"
-                screen -dmS "Cluster_2Master" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Master"
-            else
-                echo "使用32位版本重启 Cluster_2Master"
-                screen -dmS "Cluster_2Master" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Master"
-            fi
-        else
-            echo "Cluster_2Master 会话已存在，无需重新启动。"
-        fi
-    }
-
-    function monitor_caves1() {
-        if ! screen -list | grep -q "Cluster_1Caves"; then
-            echo "Cluster_1Caves 会话不存在，正在重新启动..."
-            
-            if [ "$default_version" = "64" ]; then
-                echo "使用64位版本重启 Cluster_1Caves"
-                screen -dmS "Cluster_1Caves" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Caves"
-            else
-                echo "使用32位版本重启 Cluster_1Caves"
-                screen -dmS "Cluster_1Caves" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Caves"
-            fi
-        else
-            echo "Cluster_1Caves 会话已存在，无需重新启动。"
-        fi
-    }
-
-    function monitor_caves2() {
-        if ! screen-list | grep -q "Cluster_2Caves"; then
-            echo "Cluster_2Caves 会话不存在，正在重新启动..."
-            
-            if [ "$default_version" = "64" ]; then
-                echo "使用64位版本重启 Cluster_2Caves"
-                screen -dmS "Cluster_2Caves" bash -c "cd $HOME/dst/bin64/ && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Caves"
-            else
-                echo "使用32位版本重启 Cluster_2Caves"
-                screen -dmS "Cluster_2Caves" bash -c "cd $HOME/dst/bin/ && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Caves"
-            fi
-        else
-            echo "Cluster_2Caves 会话已存在，无需重新启动。"
-        fi
-    }
-}
-
 # 监控崩溃重启
 function ms_servers() {
+    # 确保 ms.sh 存在
+    local ms_script="$HOME/ms.sh"
+    if [ ! -f "$ms_script" ]; then
+        echo_warning "监控脚本 ms.sh 不存在，正在下载..."
+        if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
+            echo_success "已成功下载监控脚本 ms.sh"
+        else
+            echo_error "下载监控脚本 ms.sh失败，请检查网络连接或URL是否正确"
+        fi
+        return 1
+    fi
+    
     while true; do
         echo "============================================"
         echo_success "请选择要执行的操作:"
@@ -982,147 +912,19 @@ function ms_servers() {
 
         case $choice in
             1)
-                # 使用全局版本配置
-                local monitor_version=$(get_current_version)
-                local has_64bit=0
-                
-                if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
-                    has_64bit=1
-                fi
-                
-                # 如果配置为64位但程序不存在，自动降级
-                if [ "$monitor_version" = "64" ] && [ $has_64bit -eq 0 ]; then
-                    echo_warning "⚠️  64位版本不存在，自动使用32位版本监控"
-                    monitor_version="32"
-                fi
-                
-                echo_info "正在启动 Cluster_1 监控 (${monitor_version}位)..."
-                
-                # 加载监控函数，传递版本参数
-                monitor_ms_functions
-                
-                # 创建监控会话
-                screen -dmS "monitor_cluster1_${monitor_version}bit" bash -c "
-                    # 重新定义监控函数
-                    function monitor_master1() {
-                        if ! screen -list | grep -q 'Cluster_1Master'; then
-                            echo 'Cluster_1Master 会话不存在，正在重新启动...'
-                            if [ '$monitor_version' = '64' ]; then
-                                echo '使用64位版本重启 Cluster_1Master'
-                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Master
-                            else
-                                echo '使用32位版本重启 Cluster_1Master'
-                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Master
-                            fi
-                        else
-                            echo 'Cluster_1Master 会话已存在，无需重新启动。'
-                        fi
-                    }
-                    
-                    function monitor_caves1() {
-                        if ! screen -list | grep -q 'Cluster_1Caves'; then
-                            echo 'Cluster_1Caves 会话不存在，正在重新启动...'
-                            if [ '$monitor_version' = '64' ]; then
-                                echo '使用64位版本重启 Cluster_1Caves'
-                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_1 -shard Caves
-                            else
-                                echo '使用32位版本重启 Cluster_1Caves'
-                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_1 -shard Caves
-                            fi
-                        else
-                            echo 'Cluster_1Caves 会话已存在，无需重新启动。'
-                        fi
-                    }
-                    
-                    # 监控循环
-                    while true; do
-                        monitor_master1
-                        monitor_caves1
-                        sleep 300
-                    done
-                "
-                
-                if screen -list | grep -q "monitor_cluster1_${monitor_version}bit"; then
-                    echo_success "✅ 已在后台启动 Cluster_1 监控脚本 (${monitor_version}位)"
-                    echo_info "监控将自动检查并重启崩溃的服务器，检查间隔：300秒"
-                else
-                    echo_error "❌ Cluster_1 监控启动失败"
-                fi
+                # 调用独立的监控脚本
+                bash "$ms_script" start 1
                 ;;
             2)
-                # 使用全局版本配置
-                local monitor_version=$(get_current_version)
-                local has_64bit=0
-                
-                if [ -f "$HOME/dst/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
-                    has_64bit=1
-                fi
-                
-                # 如果配置为64位但程序不存在，自动降级
-                if [ "$monitor_version" = "64" ] && [ $has_64bit -eq 0 ]; then
-                    echo_warning "⚠️  64位版本不存在，自动使用32位版本监控"
-                    monitor_version="32"
-                fi
-                
-                echo_info "正在启动 Cluster_2 监控 (${monitor_version}位)..."
-                
-                # 加载监控函数，传递版本参数
-                monitor_ms_functions
-                
-                # 创建监控会话
-                screen -dmS "monitor_cluster2_${monitor_version}bit" bash -c "
-                    # 重新定义监控函数
-                    function monitor_master2() {
-                        if ! screen -list | grep -q 'Cluster_2Master'; then
-                            echo 'Cluster_2Master 会话不存在，正在重新启动...'
-                            if [ '$monitor_version' = '64' ]; then
-                                echo '使用64位版本重启 Cluster_2Master'
-                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Master
-                            else
-                                echo '使用32位版本重启 Cluster_2Master'
-                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Master
-                            fi
-                        else
-                            echo 'Cluster_2Master 会话已存在，无需重新启动。'
-                        fi
-                    }
-                    
-                    function monitor_caves2() {
-                        if ! screen -list | grep -q 'Cluster_2Caves'; then
-                            echo 'Cluster_2Caves 会话不存在，正在重新启动...'
-                            if [ '$monitor_version' = '64' ]; then
-                                echo '使用64位版本重启 Cluster_2Caves'
-                                cd '$HOME/dst/bin64/' && ./dontstarve_dedicated_server_nullrenderer_x64 console_enabled -cluster Cluster_2 -shard Caves
-                            else
-                                echo '使用32位版本重启 Cluster_2Caves'
-                                cd '$HOME/dst/bin/' && ./dontstarve_dedicated_server_nullrenderer console_enabled -cluster Cluster_2 -shard Caves
-                            fi
-                        else
-                            echo 'Cluster_2Caves 会话已存在，无需重新启动。'
-                        fi
-                    }
-                    
-                    # 监控循环
-                    while true; do
-                        monitor_master2
-                        monitor_caves2
-                        sleep 300
-                    done
-                "
-                
-                if screen -list | grep -q "monitor_cluster2_${monitor_version}bit"; then
-                    echo_success "✅ 已在后台启动 Cluster_2 监控脚本 (${monitor_version}位)"
-                    echo_info "监控将自动检查并重启崩溃的服务器，检查间隔：300秒"
-                else
-                    echo_error "❌ Cluster_2 监控启动失败"
-                fi
+                # 调用独立的监控脚本
+                bash "$ms_script" start 2
                 ;;
             3)
                 echo_info "正在关闭监控脚本..."
                 local closed_count=0
                 
                 # 查找并关闭所有监控会话
-                for session in $(screen -list | grep -E "monitor_cluster1|monitor_cluster2" | cut -d. -f1); do
+                for session in $(screen -list | grep -E "monitor_Cluster" | cut -d. -f1); do
                     screen -S "$session" -X quit
                     echo_success "已关闭监控会话: $session"
                     ((closed_count++))
@@ -1152,16 +954,6 @@ function ms_servers() {
                 ;;
         esac
         
-        # 显示当前监控状态
-        echo ""
-        echo_info "📊 当前监控状态:"
-        local running_monitors=$(screen -list | grep -E "monitor_cluster1|monitor_cluster2" | wc -l)
-        if [ $running_monitors -gt 0 ]; then
-            echo_success "✅ 有 $running_monitors 个监控正在运行"
-            screen -list | grep -E "monitor_cluster1|monitor_cluster2"
-        else
-            echo_warning "⚠️  没有运行中的监控"
-        fi
         echo ""
     done
 }
@@ -1657,7 +1449,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.1 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.2 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
