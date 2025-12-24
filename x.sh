@@ -134,13 +134,7 @@ Install_dst() {
     echo_info "正在安装 Don't Starve Together 服务器..."
     sudo dpkg --add-architecture i386
     sudo apt-get update
-    sudo apt-get install -y libcurl4-gnutls-dev:i386
-    sudo apt-get install -y lib32gcc1
-    sudo apt-get install -y lib32stdc++6
-    sudo apt-get install -y libcurl4-gnutls-dev
-    sudo apt-get install -y libgcc1
-    sudo apt-get install -y libstdc++6
-    sudo apt-get install -y screen
+    sudo apt-get install -y lib32gcc-s1 libcurl4-gnutls-dev:i386 screen
     echo_success "环境依赖安装完毕"
 
     mkdir -p $HOME/.klei/DoNotStarveTogether/backups/
@@ -197,9 +191,10 @@ Install_dst() {
                 echo_success "✅ 服务器安装验证通过！"
                 echo_success "=================================================="
                 
-                echo_info "正在执行MOD修复..."
+                echo_info "正在执行MOD修复和依赖库"
                 cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
                 cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
+                cp steamcmd/linux32/libstdc++.so.6 dst/bin/lib32/
                 echo_success "MOD更新bug已修复"
                 
                 echo_success "=================================================="
@@ -251,9 +246,11 @@ Update_dst() {
     cd "$steamcmd_dir" || fail
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     echo_success "服务器更新完成,请重新执行脚本"
-    cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/
-    cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/
-    echo_success "MOD更新bug已修复"
+    echo_info "正在执行MOD修复和依赖库"
+    cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
+    cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
+    cp steamcmd/linux32/libstdc++.so.6 dst/bin/lib32/
+    echo_success "已修复"
 }
 
 # 更新指定 Cluster 的模组
@@ -1460,7 +1457,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.2 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.3 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
