@@ -194,7 +194,7 @@ Install_dst() {
                 echo_info "正在执行MOD修复和依赖库"
                 cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
                 cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
-                cp steamcmd/linux32/libstdc++.so.6 dst/bin/lib32/
+                cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/ 2>/dev/null
                 echo_success "MOD更新bug已修复"
                 
                 echo_success "=================================================="
@@ -249,7 +249,7 @@ Update_dst() {
     echo_info "正在执行MOD修复和依赖库"
     cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
     cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
-    cp steamcmd/linux32/libstdc++.so.6 dst/bin/lib32/
+    cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/ 2>/dev/null
     echo_success "已修复"
 }
 
