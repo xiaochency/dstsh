@@ -1175,8 +1175,62 @@ shutdown_server() {
     done
 }
 
+# 获取公网IP函数
+function get_public_ip() {
+    local ip_file="$HOME/.dst_public_ip"
+    local public_ip=""
+    
+    # 检查IP文件是否存在且不为空
+    if [[ -f "$ip_file" && -s "$ip_file" ]]; then
+        public_ip=$(cat "$ip_file" | head -n1 | tr -d '\n\r')
+        echo_info "从缓存读取公网IP: $public_ip"
+        echo "$public_ip"
+        return 0
+    fi
+    
+    # 如果缓存中没有IP，则重新获取
+    echo_info "正在获取本机公网IP..."
+    
+    # 尝试多个获取公网IP的源
+    local ip_sources=(
+        "https://checkip.amazonaws.com"
+        "https://v4.ident.me"
+    )
+    
+    for source in "${ip_sources[@]}"; do
+        public_ip=$(curl -s --connect-timeout 5 "$source" 2>/dev/null | tr -d '\n\r')
+        
+        # 验证IP格式（简单的IPv4验证）
+        if [[ "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo_success "成功获取公网IP: $public_ip (来源: $source)"
+            
+            # 保存到文件
+            echo "$public_ip" > "$ip_file"
+            chmod 600 "$ip_file" 2>/dev/null || true
+            
+            echo "$public_ip" | tr -d '\n\r' | head -1
+            return 0
+        fi
+        
+        sleep 1  # 避免请求过快
+    done
+    
+    # 所有源都失败
+    echo_warning "无法获取公网IP，请检查网络连接"
+    echo "未知" > "$ip_file"  # 保存未知状态
+    echo "未知"
+    return 1
+}
+
+# 强制更新公网IP函数
+function force_update_public_ip() {
+    local ip_file="$HOME/.dst_public_ip"
+    rm -f "$ip_file" 2>/dev/null
+    echo_info "已清除IP缓存，下次将重新获取公网IP"
+}
+
 # 服务器状态
-show_server_status() {
+function show_server_status() {
     echo "=== 当前服务器状态 ==="
     local clusters=("Cluster_1" "Cluster_2")
     local shards=("Master" "Caves")
@@ -1209,31 +1263,48 @@ show_server_status() {
         return
     fi
     
-    echo
-    echo "=== 存档直连信息 ==="
-    
-    # 第一步：获取本机公网IP
+    # 使用新的IP获取函数
     local A1
-    echo_info "正在获取本机公网IP..."
-    A1=$(curl -s --connect-timeout 5 https://ifconfig.io/ip 2>/dev/null || curl -s --connect-timeout 5 https://ipinfo.io/ip 2>/dev/null || echo "未知")
-    A1=$(echo "$A1" | tr -d '\n\r')  # 添加这行清理换行符
+    A1=$(get_public_ip)
     
     if [[ "$A1" == "未知" ]]; then
         echo_warning "无法获取公网IP，请检查网络连接"
+        echo_info "提示：可以尝试在'其他选项'中强制更新IP缓存"
     else
-        echo_success "本机公网IP: $A1"
+        echo_success "本机公网IP: $A1 (缓存)"
+        echo_info "💡 如需更新IP缓存，请在'其他选项'中选择强制更新"
     fi
+
+    echo
+    echo "=== 存档直连信息 ==="
     
+    # 修复IP地址清理逻辑
+    local clean_A1=""
+    if [[ "$A1" != "未知" ]]; then
+        # 更严格的IP地址提取
+        clean_A1=$(echo "$A1" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+        
+        if [[ -z "$clean_A1" ]]; then
+            # 如果正则提取失败，使用更简单的方法
+            clean_A1=$(echo "$A1" | tr -cd '0-9.' | sed 's/\.\.*/./g' | sed 's/^\.//' | sed 's/\.$//')
+            # 再次验证
+            if ! [[ "$clean_A1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                echo_warning "IP地址格式仍然不正确，使用原始值: $A1"
+                clean_A1="$A1"
+            fi
+        fi
+    else
+        clean_A1="未知"
+    fi
+
     # 检查Cluster_1的配置
     local server_ini_file="$HOME/.klei/DoNotStarveTogether/Cluster_1/Master/server.ini"
     local A2="10999"  # 默认端口
-    local cluster1_available=0
     
     if [[ -f "$server_ini_file" ]]; then
         local port_line=$(grep -E '^server_port\s*=' "$server_ini_file" | head -1)
         if [[ -n "$port_line" ]]; then
             A2=$(echo "$port_line" | sed 's/.*=\s*//' | tr -d ' ')
-            cluster1_available=1
         else
             echo_warning "Cluster_1未找到server_port配置,使用默认端口10999"
         fi
@@ -1244,13 +1315,11 @@ show_server_status() {
     # 检查Cluster_2的配置
     local server_ini_file2="$HOME/.klei/DoNotStarveTogether/Cluster_2/Master/server.ini"
     local B2="10999"  # 默认端口
-    local cluster2_available=0
     
     if [[ -f "$server_ini_file2" ]]; then
         local port_line2=$(grep -E '^server_port\s*=' "$server_ini_file2" | head -1)
         if [[ -n "$port_line2" ]]; then
             B2=$(echo "$port_line2" | sed 's/.*=\s*//' | tr -d ' ')
-            cluster2_available=1
         else
             echo_warning "Cluster_2未找到server_port配置,使用默认端口10999"
         fi
@@ -1258,52 +1327,48 @@ show_server_status() {
         echo_warning "Cluster_2的server.ini文件不存在,使用默认端口10999"
     fi
 
+    # 清理端口号
+    local clean_A2=$(echo "$A2" | tr -cd '0-9')
+    local clean_B2=$(echo "$B2" | tr -cd '0-9')
+    
+    # 如果端口为空，使用默认值
+    [[ -z "$clean_A2" ]] && clean_A2="10999"
+    [[ -z "$clean_B2" ]] && clean_B2="10999"
+
     # 打印直连命令
-    if [[ "$A1" != "未知" ]]; then
-    echo
-    echo_success "════════════════════════════════════════════"
-    
-    # 清理IP地址和端口号
-    local clean_A1=$(echo "$A1" | tr -d '\n\r' | sed 's/[^0-9.]//g')
-    local clean_A2=$(echo "$A2" | tr -d '\n\r' | sed 's/[^0-9]//g')
-    local clean_B2=$(echo "$B2" | tr -d '\n\r' | sed 's/[^0-9]//g')
-    
-    # 构建直连命令
-    local connect_cmd1=$(printf 'c_connect("%s", %s)' "$clean_A1" "$clean_A2")
-    local connect_cmd2=$(printf 'c_connect("%s", %s)' "$clean_A1" "$clean_B2")
-    
-    # Cluster_1 显示
-    if [[ $cluster1_available -eq 1 ]]; then
+    if [[ "$clean_A1" != "未知" ]]; then
+        echo
+        echo_success "════════════════════════════════════════════"
+        
+        # 构建直连命令
+        local connect_cmd1=$(printf 'c_connect("%s", %s)' "$clean_A1" "$clean_A2")
+        local connect_cmd2=$(printf 'c_connect("%s", %s)' "$clean_A1" "$clean_B2")
+        
+        # Cluster_1 显示
         if [[ $cluster1_running -eq 1 ]]; then
             echo_success "📡 Cluster_1 [🟢 运行中]"
+            echo "$connect_cmd1"
+            echo  # 空行分隔
         else
             echo_warning "📡 Cluster_1 [🔴 未运行]"
+            echo "$connect_cmd1 (服务器未运行)"
+            echo
         fi
-        echo "$connect_cmd1"
-        echo  # 空行分隔
-    fi
-    
-    # Cluster_2 显示
-    if [[ $cluster2_available -eq 1 ]]; then
+        
+        # Cluster_2 显示
         if [[ $cluster2_running -eq 1 ]]; then
             echo_success "📡 Cluster_2 [🟢 运行中]"
+            echo "$connect_cmd2"
+            echo  # 空行分隔
         else
             echo_warning "📡 Cluster_2 [🔴 未运行]"
+            echo "$connect_cmd2 (服务器未运行)"
+            echo
         fi
-        echo "$connect_cmd2"
-        echo  # 空行分隔
-    fi
-    
-    # 如果没有可用的集群配置
-    if [[ $cluster1_available -eq 0 && $cluster2_available -eq 0 ]]; then
-        echo_warning "未找到有效的服务器配置"
-    elif [[ $cluster1_running -eq 0 && $cluster2_running -eq 0 ]]; then
-        echo_warning "当前没有运行中的服务器，以上为预设直连命令"
-    fi
-    
-    echo_success "════════════════════════════════════════════"
-    echo_info "💡 在游戏大厅界面按 ~ 键打开控制台"
-    echo_info "💡 输入以上命令即可直连服务器"
+        
+        echo_success "════════════════════════════════════════════"
+        echo_info "💡 在游戏大厅界面按 ~ 键打开控制台"
+        echo_info "💡 输入以上命令即可直连服务器"
     fi
 }
 
@@ -1320,6 +1385,7 @@ others() {
         echo "4. 删除DST服务器程序"
         echo "5. 改善steam下载慢问题"
         echo "6. 切换32位/64位版本 [当前: ${current_version}位]"
+        echo "7. 强制更新公网IP缓存"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
 
@@ -1447,6 +1513,10 @@ others() {
                 
                 toggle_version
                 ;;
+            7)
+                force_update_public_ip  #强制更新公网ip
+                break
+                ;;
             0)
                 echo_info "返回主菜单"
                 break
@@ -1463,7 +1533,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.4 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.5 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
