@@ -885,23 +885,29 @@ function ms_servers() {
     # 确保 ms.sh 存在
     local ms_script="$HOME/ms.sh"
     
-    # 检查并下载ms.sh
-    if [ ! -f "$ms_script" ]; then
-        echo_warning "监控脚本 ms.sh 不存在，正在下载..."
-        if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
-            echo_success "已成功下载监控脚本 ms.sh"
-            # 添加执行权限
-            chmod +x "$ms_script"
+    while true; do
+        if [ -f "$ms_script" ]; then
+            # 文件存在时确保有执行权限
+            if [ ! -x "$ms_script" ]; then
+                chmod +x "$ms_script"
+                echo_success "已添加执行权限: $ms_script"
+            fi
+            break  # 文件已存在且权限正确，退出循环
         else
-            echo_error "下载监控脚本 ms.sh 失败，请检查网络连接或URL是否正确"
-            return 1
+            echo_warning "监控脚本 ms.sh 不存在，正在下载..."
+            if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
+                echo_success "已成功下载监控脚本 ms.sh"
+                chmod +x "$ms_script"  # 下载后立即添加权限
+            else
+                echo_error "下载失败，请检查网络或URL"
+                read -p "是否重试下载？(y/n): " retry_choice
+                if [ "$retry_choice" != "y" ]; then
+                    return 1  # 用户选择不重试，退出函数
+                fi
+                # 用户选择重试时，循环继续
+            fi
         fi
-    fi
-    
-    # 确保脚本有执行权限
-    if [ ! -x "$ms_script" ]; then
-        chmod +x "$ms_script"
-    fi
+    done
     
     while true; do
         echo "============================================"
@@ -1457,7 +1463,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.3 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.4 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
