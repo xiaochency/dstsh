@@ -730,12 +730,11 @@ function setup_maintenance_task() {
     # 获取当前小时作为默认值
     local default_hour=$(date +%H)
     
-    echo_info "🕒🕒 设置服务器维护任务"
+    echo_info "🕒 设置服务器维护任务"
     echo_info "维护任务包括："
     echo "  - 维护前5分钟发送公告"
     echo "  - 维护前2分钟自动保存"
     echo "  - 指定整点时间关闭所有服务器"
-    echo "  - 维护后10分钟自动更新 SteamCMD"
     echo ""
     
     # 输入小时
@@ -764,10 +763,6 @@ function setup_maintenance_task() {
     local announce_hour=$((hour - 1))
     local save_hour=$((hour - 1))
     
-    # 计算 SteamCMD 更新时间（维护后10分钟）
-    local steamcmd_hour=$hour
-    local steamcmd_minute="10"
-    
     # 处理小时负数的情况（当hour=0时）
     if [ $announce_hour -lt 0 ]; then
         announce_hour=23
@@ -779,11 +774,10 @@ function setup_maintenance_task() {
     
     # 显示设置信息
     echo ""
-    echo_success "📋📋 维护任务计划如下："
-    echo_success "  ⏰⏰ 维护时间: $formatted_time (整点)"
-    echo_success "  📢📢 公告时间: $(printf "%02d:%02d" "$announce_hour" "$announce_minute") (提前5分钟)"
-    echo_success "  💾💾 保存时间: $(printf "%02d:%02d" "$save_hour" "$save_minute") (提前2分钟)"
-    echo_success "  🔄🔄 SteamCMD更新: $(printf "%02d:%02d" "$steamcmd_hour" "$steamcmd_minute") (维护后10分钟)"
+    echo_success "📋 维护任务计划如下："
+    echo_success "  ⏰ 维护时间: $formatted_time (整点)"
+    echo_success "  📢 公告时间: $(printf "%02d:%02d" "$announce_hour" "$announce_minute") (提前5分钟)"
+    echo_success "  💾 保存时间: $(printf "%02d:%02d" "$save_hour" "$save_minute") (提前2分钟)"
     echo ""
     
     # 确认设置
@@ -809,9 +803,6 @@ function setup_maintenance_task() {
     # 添加关闭服务器任务
     echo "$minute $hour * * * screen -X -S Cluster_1Master quit && screen -X -S Cluster_1Caves quit && screen -X -S Cluster_2Master quit && screen -X -S Cluster_2Caves quit" >> "$temp_cron"
     
-    # 添加 SteamCMD 更新任务（使用更简单的格式便于识别）
-    echo "$steamcmd_minute $steamcmd_hour * * * cd $steamcmd_dir && ./steamcmd.sh +quit" >> "$temp_cron"
-    
     # 安装新的cron任务
     crontab "$temp_cron"
     rm -f "$temp_cron"
@@ -820,61 +811,15 @@ function setup_maintenance_task() {
     echo_success "=================================================="
     echo_success "✅ 服务器维护任务已成功设置！"
     echo_success "=================================================="
-    echo_success "🕒🕒 维护时间: 每天 $formatted_time (整点)"
-    echo_success "📢📢 提前公告: 每天 $(printf "%02d:%02d" "$announce_hour" "$announce_minute")"
-    echo_success "💾💾 自动保存: 每天 $(printf "%02d:%02d" "$save_hour" "$save_minute")"
-    echo_success "🛑🛑 服务器关闭: 每天 $formatted_time"
-    echo_success "🔄🔄 SteamCMD更新: 每天 $(printf "%02d:%02d" "$steamcmd_hour" "$steamcmd_minute")"
+    echo_success "🕒 维护时间: 每天 $formatted_time (整点)"
+    echo_success "📢 提前公告: 每天 $(printf "%02d:%02d" "$announce_hour" "$announce_minute")"
+    echo_success "💾 自动保存: 每天 $(printf "%02d:%02d" "$save_hour" "$save_minute")"
+    echo_success "🛑 服务器关闭: 每天 $formatted_time"
     echo_success "=================================================="
     echo ""
     
     # 显示当前cron任务
     show_maintenance_status
-}
-
-# 显示所有任务
-function show_maintenance_status() {
-    echo_info "📋📋 当前维护任务状态:"
-    
-    local has_tasks=0
-    local cron_list=$(crontab -l 2>/dev/null || echo "")
-    
-    if [[ -z "$cron_list" ]]; then
-        echo_warning "  暂无维护任务"
-        return
-    fi
-    
-    # 查找维护相关任务
-    while IFS= read -r line; do
-        # 跳过空行和注释行
-        if [[ -z "$line" || "$line" =~ ^# ]]; then
-            continue
-        fi
-        
-        # 提取cron时间部分和命令部分
-        local cron_min=$(echo "$line" | awk '{print $1}')
-        local cron_hour=$(echo "$line" | awk '{print $2}')
-        local cron_cmd=$(echo "$line" | cut -d' ' -f6-)
-        
-        # 检查任务类型
-        if [[ "$line" =~ c_announce ]]; then
-            has_tasks=1
-            echo_success "  📢📢 公告任务: $(printf "%02d:%02d" "${cron_hour:-0}" "${cron_min:-0}") 每天"
-        elif [[ "$line" =~ c_save ]]; then
-            has_tasks=1
-            echo_success "  💾💾 保存任务: $(printf "%02d:%02d" "${cron_hour:-0}" "${cron_min:-0}") 每天"
-        elif [[ "$line" =~ screen.*quit ]]; then
-            has_tasks=1
-            echo_success "  🛑🛑 关闭任务: $(printf "%02d:%02d" "${cron_hour:-0}" "${cron_min:-0}") 每天"
-        elif [[ "$line" =~ steamcmd\.sh ]]; then
-            has_tasks=1
-            echo_success "  🔄🔄 SteamCMD更新: $(printf "%02d:%02d" "${cron_hour:-0}" "${cron_min:-0}") 每天"
-        fi
-    done <<< "$cron_list"
-    
-    if [[ $has_tasks -eq 0 ]]; then
-        echo_warning "  暂无维护任务"
-    fi
 }
 
 # 删除服务器维护任务函数
@@ -887,7 +832,7 @@ function remove_maintenance_task() {
     
     # 创建临时cron文件，过滤掉维护任务
     local temp_cron=$(mktemp)
-    crontab -l 2>/dev/null | grep -v -E '(Cluster_1Master|Cluster_2Master|服务器维护|steamcmd\.sh)' > "$temp_cron" || true
+    crontab -l 2>/dev/null | grep -v -E '(Cluster_1Master|Cluster_2Master|服务器维护)' > "$temp_cron" || true
     
     # 如果文件为空，删除crontab
     if [[ ! -s "$temp_cron" ]]; then
@@ -901,6 +846,37 @@ function remove_maintenance_task() {
     if [[ "$silent" != "silent" ]]; then
         echo_success "✅ 所有服务器维护任务已删除"
         show_maintenance_status
+    fi
+}
+
+# 显示维护任务状态函数
+function show_maintenance_status() {
+    echo_info "📋 当前维护任务状态:"
+    
+    local has_tasks=0
+    local cron_list=$(crontab -l 2>/dev/null || echo "")
+    
+    if [[ -z "$cron_list" ]]; then
+        echo_warning "  暂无维护任务"
+        return
+    fi
+    
+    # 查找维护相关任务
+    while IFS= read -r line; do
+        if [[ "$line" =~ (Cluster_1Master|Cluster_2Master) ]]; then
+            has_tasks=1
+            if [[ "$line" =~ c_announce ]]; then
+                echo_success "  📢 公告任务: $(echo "$line" | cut -d' ' -f1,2)* * *"
+            elif [[ "$line" =~ c_save ]]; then
+                echo_success "  💾 保存任务: $(echo "$line" | cut -d' ' -f1,2)* * *"
+            elif [[ "$line" =~ screen.*quit ]]; then
+                echo_success "  🛑 关闭任务: $(echo "$line" | cut -d' ' -f1,2)* * *"
+            fi
+        fi
+    done <<< "$cron_list"
+    
+    if [[ $has_tasks -eq 0 ]]; then
+        echo_warning "  暂无维护任务"
     fi
 }
 
@@ -1557,7 +1533,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.5 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
