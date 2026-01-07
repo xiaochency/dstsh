@@ -132,9 +132,11 @@ Install_dst() {
     fi
 
     echo_info "正在安装 Don't Starve Together 服务器..."
-    sudo dpkg --add-architecture i386
-    sudo apt-get update
-    sudo apt-get install -y lib32gcc-s1 libcurl4-gnutls-dev:i386 screen
+    dpkg --add-architecture i386
+    apt-get update
+    apt-get install -y screen unzip lib32gcc-s1
+    apt-get install -y libcurl4-gnutls-dev:i386
+    apt-get install -y libcurl4-gnutls-dev
     echo_success "环境依赖安装完毕"
 
     mkdir -p $HOME/.klei/DoNotStarveTogether/backups/
@@ -175,7 +177,7 @@ Install_dst() {
     # 添加重试机制
     local install_success=false
     local retry_count=0
-    local max_retries=5
+    local max_retries=3
     
     while [ "$install_success" = false ] && [ $retry_count -lt $max_retries ]; do
         echo_info "正在尝试安装 DST 服务器 (尝试 $((retry_count + 1))/$max_retries)..."
@@ -1557,7 +1559,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.7 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
