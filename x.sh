@@ -922,15 +922,23 @@ function ms_servers() {
         else
             echo_warning "监控脚本 ms.sh 不存在，正在下载..."
             if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
-                echo_success "已成功下载监控脚本 ms.sh"
-                chmod +x "$ms_script"  # 下载后立即添加权限
+                # 下载后验证文件是否真实存在
+                if [ -f "$ms_script" ] && [ -s "$ms_script" ]; then
+                    echo_success "已成功下载监控脚本 ms.sh"
+                    chmod +x "$ms_script"
+                    break  # 下载成功且文件存在，退出循环
+                else
+                    echo_error "下载失败：文件未正确创建或为空文件"
+                    # 清理可能存在的无效文件
+                    rm -f "$ms_script" 2>/dev/null
+                fi
             else
                 echo_error "下载失败，请检查网络或URL"
-                read -p "是否重试下载？(y/n): " retry_choice
-                if [ "$retry_choice" != "y" ]; then
-                    return 1  # 用户选择不重试，退出函数
-                fi
-                # 用户选择重试时，循环继续
+            fi
+            
+            read -p "是否重试下载？(y/n): " retry_choice
+            if [ "$retry_choice" != "y" ]; then
+                return 1
             fi
         fi
     done
@@ -1398,6 +1406,153 @@ function show_server_status() {
     fi
 }
 
+# 修改端口
+function change_dst_port() {
+    while true; do
+        echo "=== DST服务器端口修改工具 ==="
+        
+        # 选择要修改的集群
+        echo "请选择要修改的存档："
+        echo "1) Cluster_1"
+        echo "2) Cluster_2"
+        echo "0) 返回上一级"
+        read -p "请输入选择 (0-2): " cluster_choice
+        
+        case $cluster_choice in
+            0)
+                echo "返回上一级菜单。"
+                return 0
+                ;;
+            1) 
+                cluster="Cluster_1"
+                break
+                ;;
+            2) 
+                cluster="Cluster_2"
+                break
+                ;;
+            *) 
+                echo_error "无效选择，请重新输入"
+                echo ""
+                ;;
+        esac
+    done
+    
+    while true; do
+        # 选择要修改的服务器类型
+        echo ""
+        echo "请选择要修改的服务器："
+        echo "1) 地面服务器 (Master)"
+        echo "2) 洞穴服务器 (Caves)" 
+        echo "0) 返回上一级"
+        read -p "请输入选择 (0-2): " server_choice
+        
+        case $server_choice in
+            0)
+                echo "返回上一级菜单。"
+                return 0
+                ;;
+            1|2)
+                break
+                ;;
+            *)
+                echo_error "无效选择，请重新输入"
+                ;;
+        esac
+    done
+    
+    # 定义服务器配置文件路径
+    master_file="$HOME/.klei/DoNotStarveTogether/${cluster}/Master/server.ini"
+    caves_file="$HOME/.klei/DoNotStarveTogether/${cluster}/Caves/server.ini"
+    
+    # 根据选择的服务器类型获取对应的当前端口号
+    current_port=""
+    config_file=""
+    
+    case $server_choice in
+        1)
+            config_file="$master_file"
+            server_type="地面服务器"
+            ;;
+        2)
+            config_file="$caves_file" 
+            server_type="洞穴服务器"
+            ;;
+    esac
+    
+    # 获取正确的当前端口号
+    if [ -f "$config_file" ]; then
+        current_port=$(grep "^server_port" "$config_file" 2>/dev/null | head -1 | awk -F'=' '{print $2}' | tr -d ' ')
+        if [ -n "$current_port" ]; then
+            echo "$server_type 当前端口号: $current_port"
+        else
+            echo "$server_type 当前未设置端口号"
+        fi
+    else
+        echo_error "配置文件不存在: $config_file"
+        echo "请先确保 $server_type 已正确配置。"
+        return 1
+    fi
+    
+    # 输入新的端口号
+    echo ""
+    read -p "请输入新的端口号 (输入0返回上一级): " new_port
+    
+    # 检查是否返回上一级
+    if [ "$new_port" = "0" ]; then
+        echo "返回上一级菜单。"
+        return 0
+    fi
+    
+    # 仅验证端口号是否为数字
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]]; then
+        echo_error "端口号必须是数字"
+        return 1
+    fi
+    
+    # 根据选择修改相应的配置文件
+    case $server_choice in
+        1)
+            modify_server_port "$master_file" "$new_port" "地面服务器"
+            ;;
+        2)
+            modify_server_port "$caves_file" "$new_port" "洞穴服务器"
+            ;;
+        *)
+            echo_error "无效选择"
+            return 1
+            ;;
+    esac
+    
+    echo_success "端口修改完成！新端口号: $new_port"
+    echo "请重启DST服务器使更改生效。"
+}
+
+# 辅助函数：修改单个服务器的端口
+function modify_server_port() {
+    local config_file="$1"
+    local new_port="$2"
+    local server_type="$3"
+    
+    echo ""
+    echo "正在修改 $server_type 端口..."
+    
+    # 检查配置文件是否存在
+    if [ ! -f "$config_file" ]; then
+        echo_error "配置文件不存在: $config_file"
+        echo "请先确保 $server_type 已正确配置。"
+        return 1
+    fi
+    
+    # 直接修改端口号
+    if sed -i "2s/server_port = [0-9]*/server_port = $new_port/" "$config_file" 2>/dev/null; then
+        echo_success "$server_type 端口修改成功"
+    else
+        echo_error "$server_type 端口修改失败"
+        return 1
+    fi
+}
+
 # 其他选项函数
 others() {
     while true; do
@@ -1412,6 +1567,7 @@ others() {
         echo "5. 改善steam下载慢问题"
         echo "6. 切换32位/64位版本 [当前: ${current_version}位]"
         echo "7. 强制更新公网IP缓存"
+        echo "8. 修改饥荒服务器端口"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
 
@@ -1543,6 +1699,10 @@ others() {
                 force_update_public_ip  #强制更新公网ip
                 break
                 ;;
+            8)
+                change_dst_port
+                break
+                ;;
             0)
                 echo_info "返回主菜单"
                 break
@@ -1559,7 +1719,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.7 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.8 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
