@@ -171,7 +171,50 @@ Install_dst() {
         echo_info "$file_name 不存在，继续下载steamcmd"
     fi
 
-    wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+    # 定义多个steamcmd下载地址
+    steamcmd_urls=(
+        "https://gh-proxy.com/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
+    )
+
+    # 尝试下载，依次使用不同的地址
+    download_success=false
+    for url in "${steamcmd_urls[@]}"; do
+        echo_info "正在尝试下载: $url"
+        if wget -q --show-progress --tries=3 --timeout=30 "$url"; then
+            echo_success "下载成功！"
+            download_success=true
+            break
+        else
+            echo_warning "下载失败，尝试下一个地址..."
+            # 删除可能下载失败的文件
+            rm -f steamcmd_linux.tar.gz 2>/dev/null
+        fi
+        sleep 2  # 短暂延迟后重试
+    done
+
+    # 检查下载是否成功
+    if [ "$download_success" = false ]; then
+        echo_error "=================================================="
+        echo_error "✘✘✘ 所有下载地址均尝试失败！"
+        echo_error "=================================================="
+        fail "无法下载 steamcmd，请检查网络连接后重试！"
+    fi
+
+    # 验证下载的文件
+    if [ ! -f "steamcmd_linux.tar.gz" ]; then
+        fail "下载的文件不存在，请检查下载过程"
+    fi
+
+    file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
+    if [ "$file_size" -lt 1000000 ]; then  # 小于1MB可能是错误页面
+        echo_warning "下载的文件大小异常 ($file_size 字节)，可能下载了错误页面"
+        rm -f steamcmd_linux.tar.gz
+        fail "下载的文件可能损坏，请重试或手动下载"
+    fi
+
+    echo_success "文件验证通过，开始解压..."
     tar -xvzf steamcmd_linux.tar.gz
     
     # 添加重试机制
@@ -1719,7 +1762,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.8 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.4.9 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
