@@ -1757,12 +1757,82 @@ others() {
     done
 }
 
+# 查看聊天日志函数
+function view_chat_log() {
+    local cluster_choice="$1"
+    local chat_log_file=""
+    
+    case $cluster_choice in
+        1)
+            chat_log_file="$HOME/.klei/DoNotStarveTogether/Cluster_1/Master/server_chat_log.txt"
+            echo_info "正在查看 Cluster_1 聊天日志..."
+            ;;
+        2)
+            chat_log_file="$HOME/.klei/DoNotStarveTogether/Cluster_2/Master/server_chat_log.txt"
+            echo_info "正在查看 Cluster_2 聊天日志..."
+            ;;
+        *)
+            echo_error "无效的集群选择"
+            return 1
+            ;;
+    esac
+    
+    # 检查聊天日志文件是否存在
+    if [ ! -f "$chat_log_file" ]; then
+        echo_warning "聊天日志文件不存在: $chat_log_file"
+        echo_info "这可能是因为服务器尚未生成聊天日志，或者该集群未运行。"
+        return 1
+    fi
+    
+    # 检查文件是否为空
+    if [ ! -s "$chat_log_file" ]; then
+        echo_info "聊天日志文件为空，暂无聊天记录。"
+        return 0
+    fi
+    
+    # 显示最后50行聊天记录（可根据需要调整行数）
+    echo "============================================"
+    echo_success "📝 聊天日志内容 (最后50行):"
+    echo "============================================"
+    tail -50 "$chat_log_file"
+    echo "============================================"
+    
+    # 提供更多选项
+    echo ""
+    echo_info "其他选项:"
+    echo "1. 查看完整聊天日志"
+    echo "2. 实时监控聊天日志（按Ctrl+C退出）"
+    echo "0. 返回"
+    
+    read -p "输入您的选择 (0-2): " log_choice
+    case $log_choice in
+        1)
+            echo "============================================"
+            echo_success "📖 完整聊天日志:"
+            echo "============================================"
+            cat "$chat_log_file"
+            echo "============================================"
+            ;;
+        2)
+            echo_info "开始实时监控聊天日志（按Ctrl+C退出）..."
+            echo "============================================"
+            tail -f "$chat_log_file"
+            ;;
+        0)
+            echo_info "返回上一级菜单..."
+            ;;
+        *)
+            echo_error "无效选择，返回上一级菜单"
+            ;;
+    esac
+}
+
 # 主菜单
 while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.4.9 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.0 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
@@ -1840,14 +1910,15 @@ while true; do
             screen -ls
             while true; do
                 echo_info "请选择一个选项:"
-                echo "1. 查看 Cluster_1Master 服务器"
-                echo "2. 查看 Cluster_1Caves 服务"
-                echo "3. 查看 Cluster_2Master 服务器"
-                echo "4. 查看 Cluster_2Caves 服务"
+                echo "1. 查看 Cluster_1Master 运行日志"
+                echo "2. 查看 Cluster_1Caves 运行日志"
+                echo "3. 查看 Cluster_2Master 运行日志"
+                echo "4. 查看 Cluster_2Caves 运行日志"
+                echo "5. 查看 服务器玩家聊天日志"
                 echo "0. 返回主菜单"
                 echo_warning "要退出 screen 会话, 请按 Ctrl+A+D."
 
-                read -p "输入您的选择 (0-4): " view_choice
+                read -p "输入您的选择 (0-5): " view_choice
                 case $view_choice in
                     1)
                         screen -r Cluster_1Master
@@ -1860,6 +1931,28 @@ while true; do
                         ;;
                     4)
                         screen -r Cluster_2Caves
+                        ;;
+                    5)
+                        while true; do
+                            echo "============================================"
+                            echo_info "请选择要查看哪个存档的聊天日志:"
+                            echo "1. 查看 Cluster_1 聊天日志"
+                            echo "2. 查看 Cluster_2 聊天日志"
+                            echo "0. 返回上一级"
+                            
+                            read -p "输入您的选择 (0-2): " chat_choice
+                            case $chat_choice in
+                                1|2)
+                                    view_chat_log "$chat_choice"
+                                    ;;
+                                0)
+                                    break
+                                    ;;
+                                *)
+                                    echo_error "无效选择. 请重试."
+                                    ;;
+                            esac
+                        done
                         ;;
                     0)
                         break
