@@ -2,7 +2,7 @@
 
 USER=$(whoami)
 ExeFile="$HOME/dstgo"
-install_dir="$HOME/dst"
+install_dir="$HOME/dst-dedicated-server"
 steamcmd_dir="$HOME/steamcmd"
 
 cd "$HOME" || exit
@@ -109,7 +109,7 @@ function install_dstgo() {
         tar -zxvf dstgo.tar.gz
         mv dst-admin-go.1.5.3 dstgo
         echo "steamcmd=$HOME/steamcmd" >> dst_config
-        echo "force_install_dir=$HOME/dst" >> dst_config
+        echo "force_install_dir=$HOME/dst-dedicated-server" >> dst_config
         echo "cluster=MyDediServer" >> dst_config
         echo "backup=$HOME/.klei/DoNotStarveTogether/backup" >> dst_config
         echo "mod_download_path=$HOME/.klei/DoNotStarveTogether/download_mod" >> dst_config
@@ -429,8 +429,8 @@ install_dst() {
         echo_cyan "正在验证服务器安装 (尝试 $((retry_count+1))/$((max_retries+1)))..."
         
         # 检查安装目录是否存在
-        if [ -d "$HOME/dst/bin/" ]; then
-            cd $HOME/dst/bin/ && {
+        if [ -d "$HOME/dst-dedicated-server/bin/" ]; then
+            cd $HOME/dst-dedicated-server/bin/ && {
                 install_success=true
                 break
             }
@@ -467,9 +467,9 @@ install_dst() {
         echo_green "=================================================="
         
         # 修复依赖
-        cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/ 2>/dev/null
-        cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
-        cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
+        cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst-dedicated-server/bin/lib32/ 2>/dev/null
+        cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst-dedicated-server/bin/lib32/ 2>/dev/null
+        cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst-dedicated-server/bin64/lib64/ 2>/dev/null
         echo_green "依赖已修复"
         
         echo_green "=================================================="
@@ -495,9 +495,9 @@ update_dst() {
     cd "$steamcmd_dir" || exit 1
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     echo_green "服务器更新完成,请重新执行脚本"
-    cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
-    cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
-    cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/ 2>/dev/null
+    cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst-dedicated-server/bin/lib32/ 2>/dev/null
+    cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst-dedicated-server/bin64/lib64/ 2>/dev/null
+    cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst-dedicated-server/bin/lib32/ 2>/dev/null
     echo_green "MOD更新bug已修复"
 }
 
