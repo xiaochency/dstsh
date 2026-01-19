@@ -173,45 +173,114 @@ Install_dst() {
 
     # 定义多个steamcmd下载地址
     steamcmd_urls=(
-        "https://gh-proxy.com/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
     )
 
-    # 尝试下载，依次使用不同的地址
-    download_success=false
-    for url in "${steamcmd_urls[@]}"; do
-        echo_info "正在尝试下载: $url"
-        if wget -q --show-progress --tries=3 --timeout=30 "$url"; then
-            echo_success "下载成功！"
-            download_success=true
-            break
-        else
-            echo_warning "下载失败，尝试下一个地址..."
-            # 删除可能下载失败的文件
-            rm -f steamcmd_linux.tar.gz 2>/dev/null
-        fi
-        sleep 2  # 短暂延迟后重试
+    # 显示下载地址选择菜单
+    echo_info "请选择steamcmd下载地址："
+    echo_success "1. 镜像源1 (github.dpik.top)"
+    echo_success "2. 镜像源2 (ghfast.top)" 
+    echo_success "3. 官方源 (steamcdn-a.akamaihd.net)"
+    
+    local download_choice
+    while true; do
+        read -p "请输入选择 [1-3]: " download_choice
+        
+        case $download_choice in
+            1|2|3)
+                break
+                ;;
+            *)
+                echo_error "无效选择，请输入 1-3 之间的数字"
+                ;;
+        esac
     done
+
+    # 手动选择模式：使用指定地址
+    local url_index=$((download_choice-1))
+    local selected_url="${steamcmd_urls[$url_index]}"
+    
+    case $download_choice in
+        1) echo_info "使用镜像源1: $selected_url" ;;
+        2) echo_info "使用镜像源2: $selected_url" ;;
+        3) echo_info "使用官方源: $selected_url" ;;
+    esac
+    
+    echo_info "正在下载: $selected_url"
+    if wget -q --show-progress --tries=3 --timeout=30 "$selected_url"; then
+        echo_success "下载成功！"
+        download_success=true
+    else
+        echo_error "下载失败！"
+        # 删除可能下载失败的文件
+        rm -f steamcmd_linux.tar.gz 2>/dev/null
+        
+        # 询问是否尝试其他地址
+        read -p "是否尝试其他下载地址？(y/n): " retry_confirm
+        if [[ "$retry_confirm" == "y" || "$retry_confirm" == "Y" ]]; then
+            echo_info "请重新选择下载地址："
+            for i in "${!steamcmd_urls[@]}"; do
+                if [ $i -ne $url_index ]; then  # 跳过已尝试的地址
+                    case $((i+1)) in
+                        1) echo_success "$((i+1)). 镜像源1 (github.dpik.top)" ;;
+                        2) echo_success "$((i+1)). 镜像源2 (ghfast.top)" ;;
+                        3) echo_success "$((i+1)). 官方源 (steamcdn-a.akamaihd.net)" ;;
+                    esac
+                fi
+            done
+            
+            local new_choice
+            while true; do
+                read -p "请输入选择: " new_choice
+                if [[ "$new_choice" =~ ^[1-3]$ ]] && [ "$new_choice" -ne "$download_choice" ]; then
+                    download_choice=$new_choice
+                    url_index=$((download_choice-1))
+                    selected_url="${steamcmd_urls[$url_index]}"
+                    break
+                elif [ "$new_choice" -eq "$download_choice" ]; then
+                    echo_error "不能选择已尝试的地址，请选择其他地址"
+                else
+                    echo_error "无效选择，请输入 1-3 之间的数字"
+                fi
+            done
+            
+            echo_info "正在重新下载: $selected_url"
+            if wget -q --show-progress --tries=3 --timeout=30 "$selected_url"; then
+                echo_success "下载成功！"
+                download_success=true
+            else
+                echo_error "再次下载失败！"
+                rm -f steamcmd_linux.tar.gz 2>/dev/null
+                download_success=false
+            fi
+        else
+            download_success=false
+        fi
+    fi
 
     # 检查下载是否成功
     if [ "$download_success" = false ]; then
         echo_error "=================================================="
-        echo_error "✘✘✘ 所有下载地址均尝试失败！"
+        echo_error "✘✘✘ 下载失败！"
         echo_error "=================================================="
-        fail "无法下载 steamcmd，请检查网络连接后重试！"
+        echo_error "无法下载 steamcmd，请检查网络连接后重试！"
+        exit 1
     fi
 
     # 验证下载的文件
     if [ ! -f "steamcmd_linux.tar.gz" ]; then
-        fail "下载的文件不存在，请检查下载过程"
+        echo_error "下载的文件不存在，请检查下载过程"
+        exit 1
     fi
 
     file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
     if [ "$file_size" -lt 1000000 ]; then  # 小于1MB可能是错误页面
-        echo_warning "下载的文件大小异常 ($file_size 字节)，可能下载了错误页面"
+        echo_info "下载的文件大小异常 ($file_size 字节)，可能下载了错误页面"
         rm -f steamcmd_linux.tar.gz
-        fail "下载的文件可能损坏，请重试或手动下载"
+        echo_error "下载的文件可能损坏，请重试或手动下载"
+        exit 1
     fi
 
     echo_success "文件验证通过，开始解压..."
@@ -1832,7 +1901,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.0 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.1 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
