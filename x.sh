@@ -1901,7 +1901,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.1 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.2 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
