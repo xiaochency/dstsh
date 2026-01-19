@@ -110,11 +110,11 @@ function install_dstgo() {
         mv dst-admin-go.1.5.3 dstgo
         mkdir $HOME/.klei/DoNotStarveTogether/backup
         mkdir $HOME/.klei/DoNotStarveTogether/download_mod
-        echo "steamcmd=$HOME/steamcmd" >> dst_config
-        echo "force_install_dir=$HOME/dst-dedicated-server" >> dst_config
-        echo "cluster=MyDediServer" >> dst_config
-        echo "backup=$HOME/.klei/DoNotStarveTogether/backup" >> dst_config
-        echo "mod_download_path=$HOME/.klei/DoNotStarveTogether/download_mod" >> dst_config
+        echo "steamcmd=/root/steamcmd" >> /root/dstgo/dst_config
+        echo "force_install_dir=/root/dst-dedicated-server" >> /root/dstgo/dst_config
+        echo "cluster=MyDediServer" >> /root/dstgo/dst_config
+        echo "backup=/root/.klei/DoNotStarveTogether/backup" >> /root/dstgo/dst_config
+        echo "mod_download_path=/root/.klei/DoNotStarveTogether/download_mod" >> /root/dstgo/dst_config
     else
         echo_red "镜像源 $selected_mirror 下载失败"
     fi
