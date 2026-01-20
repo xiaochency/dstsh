@@ -107,7 +107,7 @@ function install_dstgo() {
         echo_green "镜像源 $selected_mirror 下载成功"
         download_success=true
         tar -zxvf dstgo.tar.gz
-        mv dst-admin-go.1.5.3 dstgo
+        # mv dst-admin-go.1.5.3 dstgo
         mkdir $HOME/.klei/DoNotStarveTogether/backup
         mkdir $HOME/.klei/DoNotStarveTogether/download_mod
         echo "steamcmd=/root/steamcmd" >> /root/dstgo/dst_config
