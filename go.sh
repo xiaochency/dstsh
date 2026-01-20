@@ -50,9 +50,9 @@ function download() {
 # 安装主程序
 function install_dstgo() {
     local download_urls=(
-        "https://gh.llkk.cc/github.com/carrot-hu23/dst-admin-go/releases/download/1.5.3/dst-admin-go.1.5.3.tar.gz"
-        "https://github.dpik.top/github.com/carrot-hu23/dst-admin-go/releases/download/1.5.3/dst-admin-go.1.5.3.tar.gz"
-        "https://ghfast.top/github.com/carrot-hu23/dst-admin-go/releases/download/1.5.3/dst-admin-go.1.5.3.tar.gz"
+        "https://gh.llkk.cc/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
+        "https://github.dpik.top/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
+        "https://ghfast.top/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
     )
     
     local mirror_names=(
