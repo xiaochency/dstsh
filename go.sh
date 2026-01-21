@@ -105,18 +105,53 @@ function install_dstgo() {
     
     if download "${download_urls[mirror_index]}" 3 15 "$output_file"; then
         echo_green "镜像源 $selected_mirror 下载成功"
+        
+        # 文件验证步骤
+        echo_cyan "验证下载的文件完整性..."
+        
+        # 1. 检查文件是否存在
+        if [ ! -f "$output_file" ]; then
+            echo_red "错误：下载的文件不存在"
+            return 1
+        fi
+        
+        # 2. 检查文件大小
+        file_size=$(stat -c%s "$output_file" 2>/dev/null || stat -f%z "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -lt 1000 ]; then
+            echo_red "错误：下载的文件大小异常（$file_size 字节），可能下载失败"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        # 3. 测试压缩包完整性
+        if ! tar -tzf "$output_file" >/dev/null 2>&1; then
+            echo_red "错误：压缩文件损坏或格式不正确"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        echo_green "文件验证通过，开始解压..."
+        if ! tar -zxvf "$output_file"; then
+            echo_red "错误：解压失败，文件可能已损坏"
+            rm -f "$output_file"
+            return 1
+        fi
+        
         download_success=true
-        tar -zxvf dstgo.tar.gz
-        # mv dst-admin-go.1.5.3 dstgo
-        mkdir $HOME/.klei/DoNotStarveTogether/backup
-        mkdir $HOME/.klei/DoNotStarveTogether/download_mod
+        
+        # 后续配置操作
+        mkdir -p $HOME/.klei/DoNotStarveTogether/backup
+        mkdir -p $HOME/.klei/DoNotStarveTogether/download_mod
         echo "steamcmd=/root/steamcmd" >> /root/dstgo/dst_config
         echo "force_install_dir=/root/dst-dedicated-server" >> /root/dstgo/dst_config
         echo "cluster=MyDediServer" >> /root/dstgo/dst_config
         echo "backup=/root/.klei/DoNotStarveTogether/backup" >> /root/dstgo/dst_config
         echo "mod_download_path=/root/.klei/DoNotStarveTogether/download_mod" >> /root/dstgo/dst_config
+        
+        echo_green "✅ dstgo 安装完成！"
     else
         echo_red "镜像源 $selected_mirror 下载失败"
+        return 1
     fi
 }
 
