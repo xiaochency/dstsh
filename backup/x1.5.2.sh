@@ -367,82 +367,81 @@ Update_dst() {
     echo_success "已修复"
 }
 
-# 自动更新所有集群的模组
+# 更新指定 Cluster 的模组
 function AddAutoUpdateMod() {
-    local clusters=("1" "2")  # 定义要处理的集群列表
+    local cluster_choice="$1"
     local modTotal
     local modID
-    local processed_count=0  # 记录成功处理的集群数量
+
+    local cluster_file
+    if [[ "$cluster_choice" -eq 1 ]]; then
+        cluster_file="$HOME/.klei/DoNotStarveTogether/Cluster_1/Master/modoverrides.lua"
+    elif [[ "$cluster_choice" -eq 2 ]]; then
+        cluster_file="$HOME/.klei/DoNotStarveTogether/Cluster_2/Master/modoverrides.lua"
+    else
+        echo_error "无效的选择."
+        return
+    fi
 
     local mods_file="$HOME/dst/mods/dedicated_server_mods_setup.lua"
+    check_for_file "$cluster_file"
+
+    modTotal=$(grep -c 'workshop-' "$cluster_file")
+
+    if [[ $modTotal -eq 0 ]]; then
+        echo_warning "没有发现模组文件！"
+        return
+    fi
+
+    for item in $(seq "$modTotal"); do
+        modID=$(grep 'workshop-' "$cluster_file" | cut -d '"' -f2 | sed 's#workshop-##g' | awk "NR==$item{print \$0}")
+
+        if [[ $(grep -c "$modID" "$mods_file") -eq 0 ]]; then
+            echo "        ServerModSetup(\"$modID\")" >> "$mods_file"
+            echo ""
+            echo_success "$modID 模组添加完成！"
+        else
+            echo ""
+            echo_warning "这个 $modID 模组之前已被添加！"
+        fi
+    done
     
-    echo_info "开始自动更新所有集群的模组配置..."
+    sleep 3s
+}
+
+# 更新指定 Cluster 的模组
+function UpdateMods() {
+    local cluster_choice
     echo "============================================"
+    echo_info "请选择要更新的MOD配置:"
+    echo "1. 更新 Cluster_1 模组配置文件"
+    echo "2. 更新 Cluster_2 模组配置文件"
+    echo "0. 返回主菜单"
 
-    # 依次处理每个集群
-    for cluster_choice in "${clusters[@]}"; do
-        local cluster_file
-        if [[ "$cluster_choice" -eq 1 ]]; then
-            cluster_file="$HOME/.klei/DoNotStarveTogether/Cluster_1/Master/modoverrides.lua"
-            echo_info "正在处理 Cluster_1 的模组配置..."
-        elif [[ "$cluster_choice" -eq 2 ]]; then
-            cluster_file="$HOME/.klei/DoNotStarveTogether/Cluster_2/Master/modoverrides.lua"
-            echo_info "正在处理 Cluster_2 的模组配置..."
+    while true; do
+        read -p "输入您的选择 (0-2): " cluster_choice
+        if [[ "$cluster_choice" =~ ^[0-2]$ ]]; then
+            break
+        else
+            echo_error "无效选择. 请重试."
         fi
-
-        # 检查模组配置文件是否存在
-        if [ ! -f "$cluster_file" ]; then
-            echo_warning "⚠️  模组配置文件不存在: $cluster_file"
-            continue  # 跳过不存在的文件，继续处理下一个集群
-        fi
-
-        # 统计模组数量
-        modTotal=$(grep -c 'workshop-' "$cluster_file" 2>/dev/null || echo "0")
-
-        if [[ $modTotal -eq 0 ]]; then
-            echo_warning "  在 Cluster_$cluster_choice 中没有发现模组"
-            continue
-        fi
-
-        echo_success "  发现 $modTotal 个模组"
-
-        local added_count=0  # 记录本次添加的模组数量
-        local skipped_count=0  # 记录跳过的模组数量
-
-        # 处理每个模组
-        for item in $(seq "$modTotal"); do
-            modID=$(grep 'workshop-' "$cluster_file" | cut -d '"' -f2 | sed 's#workshop-##g' | awk "NR==$item{print \$0}")
-
-            if [[ -z "$modID" ]]; then
-                continue  # 跳过空的模组ID
-            fi
-
-            if [[ $(grep -c "$modID" "$mods_file" 2>/dev/null) -eq 0 ]]; then
-                echo "        ServerModSetup(\"$modID\")" >> "$mods_file"
-                echo_success "  ✅ 添加模组: $modID"
-                ((added_count++))
-            else
-                echo_warning "  ⚠️ 模组已存在: $modID"
-                ((skipped_count++))
-            fi
-        done
-
-        echo_success "  Cluster_$cluster_choice 处理完成: 新增 $added_count 个模组, 跳过 $skipped_count 个已存在模组"
-        echo "--------------------------------------------"
-        ((processed_count++))
     done
 
-    # 显示最终结果
-    echo "============================================"
-    if [[ $processed_count -gt 0 ]]; then
-        echo_success "✅ 模组配置更新完成! 成功处理了 $processed_count 个集群"
-        echo_info "📁 模组配置文件位置: $mods_file"
-    else
-        echo_warning "⚠️  未找到任何可处理的模组配置"
-        echo_info "💡 提示: 请确保存档中已启用模组并保存配置"
-    fi
-    
-    sleep 2s
+    case $cluster_choice in
+        1)
+            echo_info "正在更新 Cluster_1 模组配置文件..."
+            AddAutoUpdateMod 1
+            echo_success "Cluster_1 模组配置文件更新完成."
+            ;;
+        2)
+            echo_info "正在更新 Cluster_2 模组配置文件..."
+            AddAutoUpdateMod 2
+            echo_success "Cluster_2 模组配置文件更新完成."
+            ;;
+        0)
+            break
+            ;;
+    esac
 }
 
 # 启动服务器
@@ -497,17 +496,14 @@ function start_server() {
         echo_success "✔ 集群目录创建成功！"
     fi
 
-    #启动前更新模组配置
-    AddAutoUpdateMod
-
     # 检查令牌文件
     if [[ ! -f "$token_file" ]] || [[ ! -s "$token_file" ]]; then
         echo_warning "⚠️ 令牌文件不存在或为空: $token_file"
-        echo_info "📋 正在自动写入默认令牌..."
+        echo_info "📋 请粘贴您的服务器令牌（一行内容），完成后按 Ctrl+D 保存:"
         
-        # 创建令牌文件并写入默认令牌
-        echo "pds-g^KU_L2d_1Kio^qUZS9ifsEfTU9c5WBE/1J/ULPaTNAon4ZoViMJb8S5c=" > "$token_file" || {
-            echo_error "✘ 无法创建或写入令牌文件: $token_file"
+        # 创建令牌文件
+        cat > "$token_file" || {
+            echo_error "✘ 无法创建令牌文件: $token_file"
             return 1
         }
         
@@ -517,7 +513,7 @@ function start_server() {
             return 1
         fi
         
-        echo_success "✔ 令牌文件已创建并写入默认令牌！"
+        echo_success "✔ 令牌文件已创建并保存！"
     fi
 
     # 检查服务器是否已在运行
@@ -783,6 +779,8 @@ RestoreSaves() {
                 echo_success "✔✔✔ 存档恢复成功！ ✔✔✔"
                 echo_success "=================================================="
                 echo_success "🛑 恢复位置: $target_dir"
+                echo_success "📺 启动服务器前请务必在选项5更新mod配置！"
+                echo_success "📺 启动服务器前请务必在选项5更新mod配置！"
                 echo_success "=================================================="
                 echo
                 read -p "按回车键继续..."
@@ -1903,7 +1901,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.3 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.2 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
@@ -1912,7 +1910,7 @@ while true; do
     echo "-------------------------------------------------"
     echo -e "| ${CYAN}[3] 查看服务器${NC}          ${CYAN}[4] 关闭服务器${NC}          |"
     echo "-------------------------------------------------"
-    echo -e "| ${CYAN}[5] 查看玩家聊天${NC}        ${CYAN}[6] 监控服务器${NC}          |"
+    echo -e "| ${CYAN}[5] 更新模组配置${NC}        ${CYAN}[6] 监控服务器${NC}          |"
     echo "-------------------------------------------------"
     echo -e "| ${CYAN}[7] 存档管理${NC}            ${CYAN}[8] 服务器控制台${NC}        |"
     echo "-------------------------------------------------"
@@ -1985,10 +1983,11 @@ while true; do
                 echo "2. 查看 Cluster_1Caves 运行日志"
                 echo "3. 查看 Cluster_2Master 运行日志"
                 echo "4. 查看 Cluster_2Caves 运行日志"
+                echo "5. 查看 服务器玩家聊天日志"
                 echo "0. 返回主菜单"
                 echo_warning "要退出 screen 会话, 请按 Ctrl+A+D."
 
-                read -p "输入您的选择 (0-4): " view_choice
+                read -p "输入您的选择 (0-5): " view_choice
                 case $view_choice in
                     1)
                         screen -r Cluster_1Master
@@ -2001,6 +2000,28 @@ while true; do
                         ;;
                     4)
                         screen -r Cluster_2Caves
+                        ;;
+                    5)
+                        while true; do
+                            echo "============================================"
+                            echo_info "请选择要查看哪个存档的聊天日志:"
+                            echo "1. 查看 Cluster_1 聊天日志"
+                            echo "2. 查看 Cluster_2 聊天日志"
+                            echo "0. 返回上一级"
+                            
+                            read -p "输入您的选择 (0-2): " chat_choice
+                            case $chat_choice in
+                                1|2)
+                                    view_chat_log "$chat_choice"
+                                    ;;
+                                0)
+                                    break
+                                    ;;
+                                *)
+                                    echo_error "无效选择. 请重试."
+                                    ;;
+                            esac
+                        done
                         ;;
                     0)
                         break
@@ -2015,26 +2036,7 @@ while true; do
             shutdown_server
             ;;
         5)
-            while true; do
-                echo "============================================"
-                echo_info "请选择要查看哪个存档的聊天日志:"
-                echo "1. 查看 Cluster_1 聊天日志"
-                echo "2. 查看 Cluster_2 聊天日志"
-                echo "0. 返回上一级"
-                
-                read -p "输入您的选择 (0-2): " chat_choice
-                case $chat_choice in
-                    1|2)
-                        view_chat_log "$chat_choice"
-                        ;;
-                    0)
-                        break
-                        ;;
-                    *)
-                        echo_error "无效选择. 请重试."
-                        ;;
-                esac
-            done
+            UpdateMods
             ;;
         6)
             ms_servers
