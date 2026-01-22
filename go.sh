@@ -142,11 +142,7 @@ function install_dstgo() {
         # 后续配置操作
         mkdir -p $HOME/.klei/DoNotStarveTogether/backup
         mkdir -p $HOME/.klei/DoNotStarveTogether/download_mod
-        echo "steamcmd=/root/steamcmd" >> /root/dstgo/dst_config
-        echo "force_install_dir=/root/dst-dedicated-server" >> /root/dstgo/dst_config
-        echo "cluster=MyDediServer" >> /root/dstgo/dst_config
-        echo "backup=/root/.klei/DoNotStarveTogether/backup" >> /root/dstgo/dst_config
-        echo "mod_download_path=/root/.klei/DoNotStarveTogether/download_mod" >> /root/dstgo/dst_config
+        cp -r $HOME/dstgo/static/MyDediServer $HOME/.klei/DoNotStarveTogether
         
         echo_green "✅ dstgo 安装完成！"
     else
