@@ -360,6 +360,57 @@ function manage_steam302() {
     done
 }
 
+# 更换软件源为阿里云镜像
+set_aliyun_mirror_simple() {
+    echo_cyan "正在更换系统软件源为阿里云镜像..."
+
+    # 1. 备份当前的源列表
+    local sources_file="/etc/apt/sources.list"
+    local backup_file="/etc/apt/sources.list.bak.$(date +%Y%m%d%H%M%S)"
+    
+    if cp "$sources_file" "$backup_file"; then
+        echo_green "✅ 已备份当前源列表至: $backup_file"
+    else
+        echo_red "错误：备份源列表失败，操作已中止。"
+        return 1
+    fi
+
+    # 2. 直接写入阿里云源 (适用于常见的Ubuntu LTS版本，如 20.04, 22.04, 24.04)
+    # 注意：这里使用通用的 mirrors.aliyun.com 地址
+    cat > "$sources_file" << 'EOF'
+# 默认注释了源码镜像以提高 apt update 速度，如有需要可自行取消注释
+deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+# deb-src https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+# deb-src https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+# deb-src https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-proposed main restricted universe multiverse
+# deb-src https://mirrors.aliyun.com/ubuntu/ jammy-proposed main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+# deb-src https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+EOF
+
+    if [ $? -eq 0 ]; then
+        echo_green "✅ 阿里云软件源已写入 $sources_file"
+        echo_cyan "提示：当前配置适用于 Ubuntu 22.04 (Jammy Jellyfish)。"
+        echo_cyan "      如果您使用的是其他版本，可能需要手动调整版本代号。"
+    else
+        echo_red "错误：写入阿里云源失败。"
+        return 1
+    fi
+
+    # 3. 更新软件包列表
+    echo_cyan "正在更新软件包列表..."
+    if apt-get update; then
+        echo_green "✅ 软件源已成功更换，并且软件列表已更新。"
+    else
+        echo_yellow "⚠️  软件源已更换，但更新软件列表时遇到问题。"
+        echo_cyan "提示：您可以稍后手动运行 'apt-get update' 或检查网络连接。"
+        return 1
+    fi
+}
+
 # 更多功能菜单
 function others() {
     while true; do
@@ -370,10 +421,11 @@ function others() {
         echo_cyan "1. 设置root密码并启用SSH登录"
         echo_cyan "2. 禁用Ubuntu自动更新"
         echo_cyan "3. Steam加速器管理"
+        echo_cyan "4. 更换软件源为阿里云镜像"
         echo_cyan "0. 返回主菜单"
         echo_green "================================================"
 
-        read -p "请输入选择 [0-3]: " others_choice
+        read -p "请输入选择 [0-4]: " others_choice
 
         case $others_choice in
             1)
@@ -388,12 +440,16 @@ function others() {
                 echo_cyan "进入Steam加速器管理..."
                 manage_steam302
                 ;;
+            4   )
+                echo_cyan "执行: 更换软件源为阿里云镜像..."
+                set_aliyun_mirror_simple
+                ;;
             0)
                 echo_green "正在返回主菜单..."
                 return 0
                 ;;
             *)
-                echo_red "无效选择，请输入 0-3 之间的数字。"
+                echo_red "无效选择，请输入 0-4 之间的数字。"
                 ;;
         esac
 
