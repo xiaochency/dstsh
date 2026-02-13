@@ -47,16 +47,371 @@ function download() {
     return $?
 }
 
+# 设置root密码的函数
+set_root_password() {
+    echo "正在设置root密码..."
+    echo "请输入新的root密码："
+    passwd root
+    
+    # 备份SSH配置文件
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    
+    # 修改sshd_config文件以允许root登录
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+    
+    # 重启SSH服务以应用更改
+    systemctl restart ssh
+    
+    echo "远程root登录已启用，root密码已设置。"
+}
+
+# 禁用Ubuntu自动更新的函数
+disable_ubuntu_autoupdate() {
+    echo "正在禁用Ubuntu自动更新..."
+    
+    # 停止并禁用自动更新服务
+    systemctl stop unattended-upgrades
+    systemctl disable unattended-upgrades
+    
+    # 停止并禁用定时器
+    systemctl stop apt-daily.timer
+    systemctl disable apt-daily.timer
+    systemctl stop apt-daily-upgrade.timer
+    systemctl disable apt-daily-upgrade.timer
+    
+    # 修改20auto-upgrades配置文件
+    AUTO_UPGRADE_FILE="/etc/apt/apt.conf.d/20auto-upgrades"
+    if [ -f "$AUTO_UPGRADE_FILE" ]; then
+        echo "正在修改自动更新配置文件..."
+        # 备份原文件
+        cp "$AUTO_UPGRADE_FILE" "$AUTO_UPGRADE_FILE.bak"
+        
+        # 检查并替换配置项
+        if grep -q 'APT::Periodic::Update-Package-Lists "1";' "$AUTO_UPGRADE_FILE"; then
+            sed -i 's/APT::Periodic::Update-Package-Lists "1";/APT::Periodic::Update-Package-Lists "0";/' "$AUTO_UPGRADE_FILE"
+            echo "已禁用自动更新包列表"
+        fi
+        
+        if grep -q 'APT::Periodic::Unattended-Upgrade "1";' "$AUTO_UPGRADE_FILE"; then
+            sed -i 's/APT::Periodic::Unattended-Upgrade "1";/APT::Periodic::Unattended-Upgrade "0";/' "$AUTO_UPGRADE_FILE"
+            echo "已禁用无人值守升级"
+        fi
+        
+        # 如果文件不存在相关配置，则添加禁用配置
+        if ! grep -q 'APT::Periodic::Update-Package-Lists' "$AUTO_UPGRADE_FILE"; then
+            echo 'APT::Periodic::Update-Package-Lists "0";' >> "$AUTO_UPGRADE_FILE"
+        fi
+        
+        if ! grep -q 'APT::Periodic::Unattended-Upgrade' "$AUTO_UPGRADE_FILE"; then
+            echo 'APT::Periodic::Unattended-Upgrade "0";' >> "$AUTO_UPGRADE_FILE"
+        fi
+    else
+        # 如果文件不存在，创建并添加禁用配置
+        echo "创建自动更新配置文件并设置为禁用状态"
+        echo 'APT::Periodic::Update-Package-Lists "0";' > "$AUTO_UPGRADE_FILE"
+        echo 'APT::Periodic::Unattended-Upgrade "0";' >> "$AUTO_UPGRADE_FILE"
+    fi
+    
+    echo "Ubuntu自动更新已禁用。"
+}
+
+# 安装steam加速器
+function install_steam302() {
+    local download_urls=(
+        "https://github.tmby.shop/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://ghfast.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+    )
+    
+    local mirror_names=(
+        "镜像源1 (github.tmby.shop)"
+        "镜像源2 (github.dpik.top)" 
+        "镜像源3 (ghfast.top)"
+    )
+    
+    echo_cyan "开始安装 steam302..."
+    
+    # 检查当前目录下是否已存在Steamcommunity_302文件
+    if [ -e "Steamcommunity_302.tar.gz" ]; then
+        echo_yellow "检测到当前目录下已存在Steamcommunity_302文件，正在删除..."
+        rm -f "Steamcommunity_302.tar.gz"
+        echo_green "已删除现有Steamcommunity_302文件"
+    fi
+    if [ -d "Steamcommunity_302" ]; then
+        echo_yellow "检测到当前目录下已存在Steamcommunity_302文件夹，正在删除..."
+        rm -rf "Steamcommunity_302"
+        echo_green "已删除现有Steamcommunity_302文件夹"
+    fi
+    
+    # 显示镜像源选择菜单
+    echo_cyan "请选择下载镜像源："
+    for i in "${!mirror_names[@]}"; do
+        echo_green "$((i+1)). ${mirror_names[i]}"
+    done
+    
+    local selected_mirror
+    while true; do
+        read -p "请输入选择 [1-3]: " selected_mirror
+        
+        case $selected_mirror in
+            1|2|3)
+                break
+                ;;
+            *)
+                echo_red "无效选择，请输入 1-3 之间的数字"
+                ;;
+        esac
+    done
+    
+    local download_success=false
+    local output_file="Steamcommunity_302.tar.gz"
+    
+    # 使用选择的镜像源
+    local mirror_index=$((selected_mirror-1))
+    echo_cyan "使用镜像源：${mirror_names[mirror_index]}"
+    echo_cyan "下载链接: ${download_urls[mirror_index]}"
+    
+    if download "${download_urls[mirror_index]}" 3 15 "$output_file"; then
+        echo_green "镜像源 $selected_mirror 下载成功"
+        
+        # 文件验证步骤
+        echo_cyan "验证下载的文件完整性..."
+        
+        # 1. 检查文件是否存在
+        if [ ! -f "$output_file" ]; then
+            echo_red "错误：下载的文件不存在"
+            return 1
+        fi
+        
+        # 2. 检查文件大小
+        file_size=$(stat -c%s "$output_file" 2>/dev/null || stat -f%z "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -lt 1000 ]; then
+            echo_red "错误：下载的文件大小异常（$file_size 字节），可能下载失败"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        # 3. 测试压缩包完整性
+        if ! tar -tzf "$output_file" >/dev/null 2>&1; then
+            echo_red "错误：压缩文件损坏或格式不正确"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        echo_green "文件验证通过，开始解压..."
+        if ! tar -zxvf "$output_file"; then
+            echo_red "错误：解压失败，文件可能已损坏"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        download_success=true
+        
+        echo_green "✅ Steamcommunity_302 安装完成！"
+    else
+        echo_red "镜像源 $selected_mirror 下载失败"
+        return 1
+    fi
+}
+
+# 启动Steamcommunity 302服务
+function start_steam302() {
+    local target_dir="Steamcommunity_302"
+    local executable_file="./steamcommunity_302.cli"
+    local screen_session_name="steam302"
+
+    echo_cyan "正在启动Steamcommunity 302服务..."
+
+    # 检查目标目录是否存在
+    if [ ! -d "$target_dir" ]; then
+        echo_red "错误：目录 '$target_dir' 不存在，请确认该目录已正确下载或创建。"
+        return 1
+    fi
+
+    # 进入目标目录
+    cd "$target_dir" || {
+        echo_red "错误：无法进入目录 '$target_dir'。"
+        return 1
+    }
+
+    echo_green "已成功进入目录: $(pwd)"
+
+    # 检查可执行文件是否存在
+    if [ ! -f "$executable_file" ]; then
+        echo_red "错误：可执行文件 '$executable_file' 不存在，请确认该文件已正确下载或编译。"
+        echo_cyan "提示：请确保已在当前目录下运行，并且文件具有可执行权限。"
+        cd - > /dev/null  # 返回原目录
+        return 1
+    fi
+
+    # 检查文件是否具有可执行权限
+    if [ ! -x "$executable_file" ]; then
+        echo_yellow "警告：文件 '$executable_file' 没有可执行权限，正在尝试添加..."
+        chmod +x "$executable_file"
+        if [ $? -ne 0 ]; then
+            echo_red "错误：无法为文件添加可执行权限。"
+            cd - > /dev/null  # 返回原目录
+            return 1
+        fi
+        echo_green "已成功添加可执行权限。"
+    fi
+
+    # 检查screen命令是否可用
+    if ! command -v screen &> /dev/null; then
+        echo_red "错误：系统未安装screen命令，无法创建后台会话。"
+        echo_cyan "提示：您可以尝试安装screen：sudo apt install screen"
+        cd - > /dev/null  # 返回原目录
+        return 1
+    fi
+
+    # 检查是否已存在同名的screen会话
+    if screen -list | grep -q "$screen_session_name"; then
+        echo_yellow "警告：已存在名为 '$screen_session_name' 的screen会话。"
+        read -p "是否要重新启动该服务？[y/N] " restart_choice
+        case $restart_choice in
+            [Yy]*)
+                echo_cyan "正在停止现有的screen会话..."
+                screen -S "$screen_session_name" -X quit
+                sleep 1
+                ;;
+            *)
+                echo_cyan "已取消启动操作。"
+                cd - > /dev/null  # 返回原目录
+                return 0
+                ;;
+        esac
+    fi
+
+    # 使用screen创建后台会话并运行程序
+    echo_cyan "正在创建screen会话 '$screen_session_name' 并启动程序..."
+    screen -dmS "$screen_session_name" "$executable_file"
+
+    if [ $? -eq 0 ]; then
+        echo_green "✓ Steamcommunity 302服务已成功启动并运行在后台！"
+        echo_cyan "提示："
+        echo_cyan "  1. 要查看程序输出，请运行：screen -r $screen_session_name"
+        echo_cyan "  2. 要退出查看模式但不停止程序，请按 Ctrl+A 然后按 D"
+        echo_cyan "  3. Steamcommunity 302服务会占用80端口"
+    else
+        echo_red "错误：无法启动Steamcommunity 302服务，请检查screen配置。"
+        cd - > /dev/null  # 返回原目录
+        return 1
+    fi
+
+    # 返回原目录
+    cd - > /dev/null
+}
+
+# 停止Steamcommunity 302服务
+function stop_steam302() {
+    local screen_session_name="steam302"
+    
+    echo_cyan "正在停止Steamcommunity 302服务..."
+    
+    # 检查是否存在指定的screen会话
+    if screen -list | grep -q "$screen_session_name"; then
+        echo_yellow "正在停止screen会话: $screen_session_name"
+        screen -S "$screen_session_name" -X quit
+        echo_green "✓ Steamcommunity 302服务已停止。"
+    else
+        echo_green "✓ Steamcommunity 302服务未在运行。"
+    fi
+}
+
+# Steam加速器管理菜单
+function manage_steam302() {
+    while true; do
+        clear
+        echo_green "================================================"
+        echo_green "           Steam加速器管理"
+        echo_green "================================================"
+        echo_cyan "1. 安装Steamcommunity 302"
+        echo_cyan "2. 启动Steamcommunity 302服务"
+        echo_cyan "3. 停止Steamcommunity 302服务"
+        echo_cyan "0. 返回上一级"
+        echo_green "================================================"
+
+        read -p "请输入选择 [0-3]: " steam302_choice
+
+        case $steam302_choice in
+            1)
+                echo_cyan "执行: 安装Steamcommunity 302..."
+                install_steam302
+                ;;
+            2)
+                echo_cyan "执行: 启动Steamcommunity 302服务..."
+                start_steam302
+                ;;
+            3)
+                echo_cyan "执行: 停止Steamcommunity 302服务..."
+                stop_steam302
+                ;;
+            0)
+                echo_green "正在返回上一级菜单..."
+                return 0
+                ;;
+            *)
+                echo_red "无效选择，请输入 0-3 之间的数字。"
+                ;;
+        esac
+
+        echo
+        read -p "按回车键继续..."
+    done
+}
+
+# 更多功能菜单
+function others() {
+    while true; do
+        clear
+        echo_green "================================================"
+        echo_green "               更多功能"
+        echo_green "================================================"
+        echo_cyan "1. 设置root密码并启用SSH登录"
+        echo_cyan "2. 禁用Ubuntu自动更新"
+        echo_cyan "3. Steam加速器管理"
+        echo_cyan "0. 返回主菜单"
+        echo_green "================================================"
+
+        read -p "请输入选择 [0-3]: " others_choice
+
+        case $others_choice in
+            1)
+                echo_cyan "执行: 设置root密码..."
+                set_root_password
+                ;;
+            2)
+                echo_cyan "执行: 禁用Ubuntu自动更新..."
+                disable_ubuntu_autoupdate
+                ;;
+            3)
+                echo_cyan "进入Steam加速器管理..."
+                manage_steam302
+                ;;
+            0)
+                echo_green "正在返回主菜单..."
+                return 0
+                ;;
+            *)
+                echo_red "无效选择，请输入 0-3 之间的数字。"
+                ;;
+        esac
+
+        echo
+        read -p "按回车键继续..."
+    done
+}
+
 # 安装主程序
 function install_dstgo() {
     local download_urls=(
-        "https://gh.llkk.cc/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
+        "https://github.tmby.shop/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
         "https://github.dpik.top/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
         "https://ghfast.top/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
     )
     
     local mirror_names=(
-        "镜像源1 (gh.llkk.cc)"
+        "镜像源1 (github.tmby.shop)"
         "镜像源2 (github.dpik.top)" 
         "镜像源3 (ghfast.top)"
     )
@@ -705,7 +1060,7 @@ function show_menu() {
     echo_cyan "5. 更新饥荒服务器"
     echo_cyan "6. 修改端口"
     echo_cyan "7. steamcmd自动更新"
-    echo_cyan "0. 退出脚本"
+    echo_cyan "0. 更多功能"
     
     echo
     echo_green "================================================"
@@ -715,7 +1070,7 @@ function show_menu() {
 function main_menu() {
     while true; do
         show_menu
-        read -p "请输入选择 [0-6]: " choice
+        read -p "请输入选择 [0-7]: " choice
         
         case $choice in
             1)
@@ -747,11 +1102,11 @@ function main_menu() {
                 manage_crontab
                 ;;
             0)
-                echo_green "感谢使用，再见！"
-                exit 0
+                echo_cyan "执行: 更多功能"
+                others
                 ;;
             *)
-                echo_red "无效选择，请输入 0-5 之间的数字"
+                echo_red "无效选择，请输入 0-7 之间的数字"
                 ;;
         esac
         
