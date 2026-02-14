@@ -357,6 +357,20 @@ Install_dst() {
 # 更新服务器
 Update_dst() {
     echo_info "正在更新 Don't Starve Together 服务器..."
+    # 更新前，先关闭相关的 screen 会话
+    echo_info "正在关闭相关服务器及监控进程..."
+    local sessions=("Cluster_1Master" "Cluster_2Master" "Cluster_1Caves" "Cluster_2Caves" "monitor_Cluster_1" "monitor_Cluster_2")
+    
+    for session in "${sessions[@]}"; do
+        if screen -list | grep -q "$session"; then
+            echo_info "  关闭会话: $session"
+            screen -X -S "$session" quit 2>/dev/null
+        fi
+    done
+    
+    # 给予短暂延迟，确保进程完全关闭
+    sleep 2
+
     cd "$steamcmd_dir" || fail
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     echo_success "服务器更新完成,请重新执行脚本"
@@ -1667,6 +1681,251 @@ function modify_server_port() {
     fi
 }
 
+# 安装steam加速器
+function install_steam302() {
+    local download_urls=(
+        "https://gh-proxy.net/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://ghfast.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+    )
+    
+    local mirror_names=(
+        "镜像源1 (gh-proxy.net)"
+        "镜像源2 (github.dpik.top)" 
+        "镜像源3 (ghfast.top)"
+    )
+    
+    echo "开始安装 steam302..."
+    
+    # 检查当前目录下是否已存在Steamcommunity_302文件
+    if [ -e "Steamcommunity_302.tar.gz" ]; then
+        echo_warning "检测到当前目录下已存在Steamcommunity_302文件，正在删除..."
+        rm -f "Steamcommunity_302.tar.gz"
+        echo_success "已删除现有Steamcommunity_302文件"
+    fi
+    if [ -d "Steamcommunity_302" ]; then
+        echo_warning "检测到当前目录下已存在Steamcommunity_302文件夹，正在删除..."
+        rm -rf "Steamcommunity_302"
+        echo_success "已删除现有Steamcommunity_302文件夹"
+    fi
+    
+    # 显示镜像源选择菜单
+    echo "请选择下载镜像源："
+    for i in "${!mirror_names[@]}"; do
+        echo_success "$((i+1)). ${mirror_names[i]}"
+    done
+    
+    local selected_mirror
+    while true; do
+        read -p "请输入选择 [1-3]: " selected_mirror
+        
+        case $selected_mirror in
+            1|2|3)
+                break
+                ;;
+            *)
+                echo_error "无效选择，请输入 1-3 之间的数字"
+                ;;
+        esac
+    done
+    
+    local download_success=false
+    local output_file="Steamcommunity_302.tar.gz"
+    
+    # 使用选择的镜像源
+    local mirror_index=$((selected_mirror-1))
+    echo "使用镜像源：${mirror_names[mirror_index]}"
+    echo "下载链接: ${download_urls[mirror_index]}"
+    
+    if download "${download_urls[mirror_index]}" 3 15 "$output_file"; then
+        echo_success "镜像源 $selected_mirror 下载成功"
+        
+        # 文件验证步骤
+        echo "验证下载的文件完整性..."
+        
+        # 1. 检查文件是否存在
+        if [ ! -f "$output_file" ]; then
+            echo_error "错误：下载的文件不存在"
+            return 1
+        fi
+        
+        # 2. 检查文件大小
+        file_size=$(stat -c%s "$output_file" 2>/dev/null || stat -f%z "$output_file" 2>/dev/null || echo "0")
+        if [ "$file_size" -lt 1000 ]; then
+            echo_error "错误：下载的文件大小异常（$file_size 字节），可能下载失败"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        # 3. 测试压缩包完整性
+        if ! tar -tzf "$output_file" >/dev/null 2>&1; then
+            echo_error "错误：压缩文件损坏或格式不正确"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        echo_success "文件验证通过，开始解压..."
+        if ! tar -zxvf "$output_file"; then
+            echo_error "错误：解压失败，文件可能已损坏"
+            rm -f "$output_file"
+            return 1
+        fi
+        
+        download_success=true
+        
+        echo_success "✅ Steamcommunity_302 安装完成！"
+    else
+        echo_error "镜像源 $selected_mirror 下载失败"
+        return 1
+    fi
+}
+
+# 启动Steamcommunity 302服务
+function start_steam302() {
+    local target_dir="Steamcommunity_302"
+    local executable_file="./steamcommunity_302.cli"
+    local screen_session_name="steam302"
+
+    echo "正在启动Steamcommunity 302服务..."
+
+    # 检查目标目录是否存在
+    if [ ! -d "$target_dir" ]; then
+        echo_error "错误：目录 '$target_dir' 不存在，请确认该目录已正确下载或创建。"
+        return 1
+    fi
+
+    # 进入目标目录
+    cd "$target_dir" || {
+        echo_error "错误：无法进入目录 '$target_dir'。"
+        return 1
+    }
+
+    echo_success "已成功进入目录: $(pwd)"
+
+    # 检查可执行文件是否存在
+    if [ ! -f "$executable_file" ]; then
+        echo_error "错误：可执行文件 '$executable_file' 不存在，请确认该文件已正确下载或编译。"
+        echo "提示：请确保已在当前目录下运行，并且文件具有可执行权限。"
+        cd - > /dev/null  # 返回原目录
+        return 1
+    fi
+
+    # 检查文件是否具有可执行权限
+    if [ ! -x "$executable_file" ]; then
+        echo_warning "警告：文件 '$executable_file' 没有可执行权限，正在尝试添加..."
+        chmod +x "$executable_file"
+        if [ $? -ne 0 ]; then
+            echo_error "错误：无法为文件添加可执行权限。"
+            cd - > /dev/null  # 返回原目录
+            return 1
+        fi
+        echo_success "已成功添加可执行权限。"
+    fi
+
+    # 检查screen命令是否可用
+    if ! command -v screen &> /dev/null; then
+        echo_error "错误：系统未安装screen命令，无法创建后台会话。"
+        echo "提示：您可以尝试安装screen：sudo apt install screen"
+        cd - > /dev/null  # 返回原目录
+        return 1
+    fi
+
+    # 检查是否已存在同名的screen会话
+    if screen -list | grep -q "$screen_session_name"; then
+        echo_warning "警告：已存在名为 '$screen_session_name' 的screen会话。"
+        read -p "是否要重新启动该服务？[y/N] " restart_choice
+        case $restart_choice in
+            [Yy]*)
+                echo "正在停止现有的screen会话..."
+                screen -S "$screen_session_name" -X quit
+                sleep 1
+                ;;
+            *)
+                echo "已取消启动操作。"
+                cd - > /dev/null  # 返回原目录
+                return 0
+                ;;
+        esac
+    fi
+
+    # 使用screen创建后台会话并运行程序
+    echo "正在创建screen会话 '$screen_session_name' 并启动程序..."
+    screen -dmS "$screen_session_name" "$executable_file"
+
+    if [ $? -eq 0 ]; then
+        echo_success "✓ Steamcommunity 302服务已成功启动并运行在后台！"
+        echo "提示："
+        echo "  1. 要查看程序输出，请运行：screen -r $screen_session_name"
+        echo "  2. 要退出查看模式但不停止程序，请按 Ctrl+A 然后按 D"
+        echo "  3. Steamcommunity 302服务会占用80端口"
+    else
+        echo_error "错误：无法启动Steamcommunity 302服务，请检查screen配置。"
+        cd - > /dev/null  # 返回原目录
+        return 1
+    fi
+
+    # 返回原目录
+    cd - > /dev/null
+}
+
+# 停止Steamcommunity 302服务
+function stop_steam302() {
+    local screen_session_name="steam302"
+    
+    echo "正在停止Steamcommunity 302服务..."
+    
+    # 检查是否存在指定的screen会话
+    if screen -list | grep -q "$screen_session_name"; then
+        echo_warning "正在停止screen会话: $screen_session_name"
+        screen -S "$screen_session_name" -X quit
+        echo_success "✓ Steamcommunity 302服务已停止。"
+    else
+        echo_success "✓ Steamcommunity 302服务未在运行。"
+    fi
+}
+
+# Steam加速器管理菜单
+function manage_steam302() {
+    while true; do
+        clear
+        echo_success "================================================"
+        echo_success "           Steam加速器管理"
+        echo_success "================================================"
+        echo "1. 安装Steamcommunity 302"
+        echo "2. 启动Steamcommunity 302服务"
+        echo "3. 停止Steamcommunity 302服务"
+        echo "0. 返回上一级"
+        echo_success "================================================"
+
+        read -p "请输入选择 [0-3]: " steam302_choice
+
+        case $steam302_choice in
+            1)
+                echo "执行: 安装Steamcommunity 302..."
+                install_steam302
+                ;;
+            2)
+                echo "执行: 启动Steamcommunity 302服务..."
+                start_steam302
+                ;;
+            3)
+                echo "执行: 停止Steamcommunity 302服务..."
+                stop_steam302
+                ;;
+            0)
+                echo_success "正在返回上一级菜单..."
+                return 0
+                ;;
+            *)
+                echo_error "无效选择，请输入 0-3 之间的数字。"
+                ;;
+        esac
+
+        echo
+        read -p "按回车键继续..."
+    done
+}
+
 # 其他选项函数
 others() {
     while true; do
@@ -1678,7 +1937,7 @@ others() {
         echo "2. 更新黑名单"
         echo "3. 删除所有MOD"
         echo "4. 删除DST服务器程序"
-        echo "5. 改善steam下载慢问题"
+        echo "5. steam下载加速"
         echo "6. 切换32位/64位版本 [当前: ${current_version}位]"
         echo "7. 强制更新公网IP缓存"
         echo "8. 修改饥荒服务器端口"
@@ -1740,52 +1999,8 @@ others() {
                 fi
                 ;;
             5)
-                echo_info "正在尝试改善steam下载速度..."
-                
-                # 备份原hosts文件
-                if [ ! -f /etc/hosts.bak ]; then
-                    sudo cp /etc/hosts /etc/hosts.bak
-                    echo_success "已备份原hosts文件为 /etc/hosts.bak"
-                fi
-                
-                # 检查是否已存在相关配置
-                if grep -q "steamcdn-a.akamaihd.net" /etc/hosts; then
-                    echo_warning "steamcdn-a.akamaihd.net 已在hosts文件中，跳过添加"
-                else
-                    echo "23.193.186.141 steamcdn-a.akamaihd.net" | sudo tee -a /etc/hosts
-                    echo_success "已添加 steamcdn-a.akamaihd.net 到hosts"
-                fi
-                
-                if grep -q "media.steampowered.com" /etc/hosts; then
-                    echo_warning "media.steampowered.com 已在hosts文件中，跳过添加"
-                else
-                    echo "23.32.241.96 media.steampowered.com" | sudo tee -a /etc/hosts
-                    echo_success "已添加 media.steampowered.com 到hosts"
-                fi
-                                
-                # 刷新DNS缓存
-                if command -v systemctl &> /dev/null; then
-                    if systemctl is-active --quiet systemd-resolved; then
-                        sudo systemctl restart systemd-resolved
-                        echo_success "已重启systemd-resolved服务"
-                    fi
-                fi
-                
-                # 测试连接
-                echo_info "测试连接到steam服务器..."
-                if ping -c 2 steamcdn-a.akamaihd.net &> /dev/null; then
-                    echo_success "✓ 连接测试成功！"
-                else
-                    echo_warning "⚠ 连接测试失败，但hosts已更新"
-                fi
-                
-                echo_success "=================================================="
-                echo_success "✅ Steam下载优化已完成！"
-                echo_success "=================================================="
-                echo_info "提示："
-                echo_info "1. 如果需要恢复原hosts文件，请执行：sudo cp /etc/hosts.bak /etc/hosts"
-                echo_info "2. 重新运行steamcmd或更新服务器以查看效果"
-                echo_success "=================================================="
+                #steam加速
+                manage_steam302
                 ;;
             6)
                 # 显示当前版本并切换
@@ -1903,7 +2118,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.3 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.4 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
