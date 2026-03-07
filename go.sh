@@ -36,6 +36,160 @@ else
     acceleration_index=$1
 fi
 
+# 镜像源地址
+MIRROR_URLS=(
+    "https://cdn.gh-proxy.org"
+    "https://github.dpik.top"
+    "https://gh.927223.xyz"
+    "https://edgeone.gh-proxy.org"
+    "https://gh.llkk.cc"
+)
+MIRROR_NAMES=(
+    "镜像源1 (cdn.gh-proxy.org)"
+    "镜像源2 (github.dpik.top)"
+    "镜像源3 (gh.927223.xyz)"
+    "镜像源4 (edgeone.gh-proxy.org)"
+    "镜像源5 (gh.llkk.cc)"
+)
+
+# 用于存储用户选择的镜像源索引和地址的全局变量
+SELECTED_MIRROR_INDEX=""
+SELECTED_MIRROR_URL=""
+
+# 功能：测试镜像源延迟并允许用户手动选择
+function select_mirror_with_ping() {
+    local total_mirrors=${#MIRROR_URLS[@]}
+    local ping_results=()
+    local valid_mirrors=()
+
+    echo_green "================================================"
+    echo_green "           镜像源延迟测试与选择"
+    echo_green "================================================"
+    echo_cyan "正在测试各镜像源延迟，请稍候..."
+
+    # ==== 检查并安装 bc 命令 ====
+    echo_cyan “检查系统依赖...”
+    if ! command -v bc &> /dev/null; then
+        echo_yellow “未找到 ‘bc‘ 命令，尝试自动安装...”
+        if apt-get update > /dev/null 2>&1 && apt-get install -y bc > /dev/null 2>&1; then
+            echo_green “✅ bc 命令安装成功。”
+        else
+            echo_red “错误：无法自动安装 ‘bc‘ 命令。请手动安装后重试。”
+            echo_cyan “您可以尝试执行：apt-get update && apt-get install -y bc”
+            return 1
+        fi
+    fi
+
+    # 测试每个镜像源的延迟
+    for ((i=0; i<total_mirrors; i++)); do
+        # 从URL中提取主机名用于ping测试（移除https://）
+        local hostname=${MIRROR_URLS[i]#https://}
+        # 进一步处理，只取域名部分（去掉路径）
+        hostname=${hostname%%/*}
+        
+        echo_cyan "测试中: ${MIRROR_NAMES[i]}"
+        
+        # 使用curl测试连接时间（更符合下载场景）
+        # -w 输出连接时间， -s 静默模式， -o 输出到空， --connect-timeout 设置超时
+        local start_time=$(date +%s%N)
+        if curl -s --connect-timeout 3 -o /dev/null -w "%{time_total}" "${MIRROR_URLS[i]}" > /tmp/curl_time.txt 2>/dev/null; then
+            local end_time=$(date +%s%N)
+            local curl_time=$(cat /tmp/curl_time.txt)
+            # 将秒转换为毫秒，并保留两位小数
+            local delay_ms=$(echo "scale=2; $curl_time * 1000" | bc)
+            
+            if [[ -n "$delay_ms" ]]; then
+                ping_results[i]="$delay_ms"
+                valid_mirrors+=("$i")
+                echo_green "  ✅ 可达，延迟: ${delay_ms}ms"
+            else
+                ping_results[i]="timeout"
+                echo_red "  ❌ 测试失败 (超时或无响应)"
+            fi
+        else
+            ping_results[i]="timeout"
+            echo_red "  ❌ 测试失败 (连接错误)"
+        fi
+        # 短暂间隔，避免请求过快
+        sleep 0.5
+    done
+
+    echo_green "----------------------------------------"
+    echo_cyan "延迟测试完成！请从以下选项中选择："
+    
+    # 显示可用的镜像源及其延迟
+    for ((i=0; i<total_mirrors; i++)); do
+        if [[ "${ping_results[i]}" == "timeout" ]]; then
+            echo_red "$((i+1)). ${MIRROR_NAMES[i]} - 不可达"
+        else
+            # 根据延迟显示不同颜色
+            if (( $(echo "${ping_results[i]} < 500" | bc -l 2>/dev/null) )); then
+                echo_green "$((i+1)). ${MIRROR_NAMES[i]} - 延迟: ${ping_results[i]}ms"
+            elif (( $(echo "${ping_results[i]} < 1500" | bc -l 2>/dev/null) )); then
+                echo_yellow "$((i+1)). ${MIRROR_NAMES[i]} - 延迟: ${ping_results[i]}ms"
+            else
+                echo_red "$((i+1)). ${MIRROR_NAMES[i]} - 延迟: ${ping_results[i]}ms"
+            fi
+        fi
+    done
+    
+    echo_cyan "0. 取消选择，返回上一级"
+    echo_green "================================================"
+
+    # 用户选择
+    local user_choice
+    while true; do
+        read -p "请输入选择 [0-$total_mirrors]: " user_choice
+        
+        # 检查输入是否有效
+        if [[ "$user_choice" =~ ^[0-9]+$ ]]; then
+            if (( user_choice == 0 )); then
+                echo_yellow "已取消选择，返回上一级。"
+                SELECTED_MIRROR_INDEX=""
+                SELECTED_MIRROR_URL=""
+                return 1
+            elif (( user_choice >= 1 && user_choice <= total_mirrors )); then
+                local index=$((user_choice-1))
+                
+                # 检查选择的镜像源是否可达
+                if [[ "${ping_results[index]}" == "timeout" ]]; then
+                    echo_red "警告：您选择的镜像源当前不可达，可能影响下载速度。"
+                    read -p "是否仍要选择此镜像源？(y/N): " confirm_choice
+                    if [[ "$confirm_choice" != "y" && "$confirm_choice" != "Y" ]]; then
+                        continue
+                    fi
+                fi
+                
+                # 保存用户选择
+                SELECTED_MIRROR_INDEX=$index
+                SELECTED_MIRROR_URL="${MIRROR_URLS[index]}"
+                
+                echo_green "✅ 已选择: ${MIRROR_NAMES[index]}"
+                echo_green "   镜像地址: ${SELECTED_MIRROR_URL}"
+                echo_green "   延迟: ${ping_results[index]:-未知}ms"
+                
+                return 0
+            else
+                echo_red "无效选择，请输入 0-$total_mirrors 之间的数字。"
+            fi
+        else
+            echo_red "无效输入，请输入数字。"
+        fi
+    done
+}
+
+# 功能：获取已选择的镜像源（供其他下载函数调用）
+function get_selected_mirror() {
+    if [[ -z "$SELECTED_MIRROR_INDEX" || -z "$SELECTED_MIRROR_URL" ]]; then
+        echo_red "错误：尚未选择镜像源，请先运行 select_mirror_with_ping 函数。"
+        return 1
+    fi
+    # 返回选择的索引（从0开始）和URL
+    echo "$SELECTED_MIRROR_INDEX"
+    echo "$SELECTED_MIRROR_URL"
+    return 0
+}
+
 # 下载函数:下载链接,尝试次数,超时时间(s)
 function download() {
     local download_url="$1"
@@ -117,19 +271,39 @@ disable_ubuntu_autoupdate() {
 
 # 安装steam加速器
 function install_steam302() {
-    local download_urls=(
-        "https://github.tmby.shop/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
-        "https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
-        "https://ghfast.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
-    )
-    
-    local mirror_names=(
-        "镜像源1 (github.tmby.shop)"
-        "镜像源2 (github.dpik.top)" 
-        "镜像源3 (ghfast.top)"
-    )
+    # 原始GitHub发布文件的相对路径
+    local original_github_path="/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
     
     echo_cyan "开始安装 steam302..."
+    
+    # 第一步：调用测速与选择函数
+    echo_cyan "=== 步骤1/3: 选择下载镜像源 ==="
+    if ! select_mirror_with_ping; then
+        echo_yellow "安装过程中断，返回上一级。"
+        return 1
+    fi
+    
+    # 第二步：获取用户已选择的镜像源地址
+    echo_cyan "=== 步骤2/3: 获取镜像源配置 ==="
+    local selected_info
+    selected_info=$(get_selected_mirror)
+    if [[ $? -ne 0 ]]; then
+        echo_red "无法获取镜像源配置，安装失败。"
+        return 1
+    fi
+    
+    # 解析get_selected_mirror的输出（第一行是索引，第二行是URL）
+    local selected_index=$(echo "$selected_info" | sed -n '1p')
+    local selected_base_url=$(echo "$selected_info" | sed -n '2p')
+    
+    echo_green "✅ 将使用镜像源: ${MIRROR_NAMES[$selected_index]}"
+    echo_cyan "   基础地址: $selected_base_url"
+    
+    # 第三步：构建完整的加速下载链接并执行下载
+    echo_cyan "=== 步骤3/3: 开始下载并安装 ==="
+    # 完整的下载链接 = 镜像源基础地址 + 原始GitHub路径
+    local full_download_url="${selected_base_url}/https://github.com${original_github_path}"
+    echo_cyan "完整下载链接: $full_download_url"
     
     # 检查当前目录下是否已存在Steamcommunity_302文件
     if [ -e "Steamcommunity_302.tar.gz" ]; then
@@ -143,38 +317,14 @@ function install_steam302() {
         echo_green "已删除现有Steamcommunity_302文件夹"
     fi
     
-    # 显示镜像源选择菜单
-    echo_cyan "请选择下载镜像源："
-    for i in "${!mirror_names[@]}"; do
-        echo_green "$((i+1)). ${mirror_names[i]}"
-    done
-    
-    local selected_mirror
-    while true; do
-        read -p "请输入选择 [1-3]: " selected_mirror
-        
-        case $selected_mirror in
-            1|2|3)
-                break
-                ;;
-            *)
-                echo_red "无效选择，请输入 1-3 之间的数字"
-                ;;
-        esac
-    done
-    
     local download_success=false
     local output_file="Steamcommunity_302.tar.gz"
     
-    # 使用选择的镜像源
-    local mirror_index=$((selected_mirror-1))
-    echo_cyan "使用镜像源：${mirror_names[mirror_index]}"
-    echo_cyan "下载链接: ${download_urls[mirror_index]}"
-    
-    if download "${download_urls[mirror_index]}" 3 15 "$output_file"; then
-        echo_green "镜像源 $selected_mirror 下载成功"
+    # 使用选择的镜像源进行下载
+    if download "$full_download_url" 3 15 "$output_file"; then
+        echo_green "下载成功！"
         
-        # 文件验证步骤
+        # 文件验证步骤 (保持与原函数一致)
         echo_cyan "验证下载的文件完整性..."
         
         # 1. 检查文件是否存在
@@ -209,7 +359,9 @@ function install_steam302() {
         
         echo_green "✅ Steamcommunity_302 安装完成！"
     else
-        echo_red "镜像源 $selected_mirror 下载失败"
+        echo_red "下载失败！"
+        echo_cyan "  1. 检查网络连接后重试"
+        echo_cyan "  2. 返回镜像源选择，尝试另一个镜像源"
         return 1
     fi
 }
@@ -244,17 +396,10 @@ function start_steam302() {
         return 1
     fi
 
-    # 检查文件是否具有可执行权限
-    if [ ! -x "$executable_file" ]; then
-        echo_yellow "警告：文件 '$executable_file' 没有可执行权限，正在尝试添加..."
-        chmod +x "$executable_file"
-        if [ $? -ne 0 ]; then
-            echo_red "错误：无法为文件添加可执行权限。"
-            cd - > /dev/null  # 返回原目录
-            return 1
-        fi
-        echo_green "已成功添加可执行权限。"
-    fi
+    # 给执行权限
+    chmod +x Steamcommunity_302
+    chmod +x steamcommunity_302.caddy
+    chmod +x steamcommunity_302.cli
 
     # 检查screen命令是否可用
     if ! command -v screen &> /dev/null; then
@@ -286,16 +431,19 @@ function start_steam302() {
     echo_cyan "正在创建screen会话 '$screen_session_name' 并启动程序..."
     screen -dmS "$screen_session_name" "$executable_file"
 
-    if [ $? -eq 0 ]; then
+    # 等待片刻，让screen会话建立
+    sleep 2
+
+    # 检查screen会话是否存在
+    if screen -list | grep -q "$screen_session_name"; then
         echo_green "✓ Steamcommunity 302服务已成功启动并运行在后台！"
         echo_cyan "提示："
         echo_cyan "  1. 要查看程序输出，请运行：screen -r $screen_session_name"
         echo_cyan "  2. 要退出查看模式但不停止程序，请按 Ctrl+A 然后按 D"
         echo_cyan "  3. Steamcommunity 302服务会占用80端口"
     else
-        echo_red "错误：无法启动Steamcommunity 302服务，请检查screen配置。"
-        cd - > /dev/null  # 返回原目录
-        return 1
+        echo_red "警告：screen命令已执行，但未检测到对应的会话 '$screen_session_name'。"
+        echo_cyan "请检查程序文件是否正常！"
     fi
 
     # 返回原目录
@@ -458,21 +606,41 @@ function others() {
     done
 }
 
-# 安装主程序
+# 安装dstgo程序
 function install_dstgo() {
-    local download_urls=(
-        "https://github.tmby.shop/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
-        "https://github.dpik.top/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
-        "https://ghfast.top/github.com/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
-    )
-    
-    local mirror_names=(
-        "镜像源1 (github.tmby.shop)"
-        "镜像源2 (github.dpik.top)" 
-        "镜像源3 (ghfast.top)"
-    )
+    # 原始GitHub发布文件的相对路径
+    local original_github_path="/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
     
     echo_cyan "开始安装 dstgo..."
+    
+    # 第一步：调用测速与选择函数
+    echo_cyan "=== 步骤1/3: 选择下载镜像源 ==="
+    if ! select_mirror_with_ping; then
+        echo_yellow "安装过程中断，返回上一级。"
+        return 1
+    fi
+    
+    # 第二步：获取用户已选择的镜像源地址
+    echo_cyan "=== 步骤2/3: 获取镜像源配置 ==="
+    local selected_info
+    selected_info=$(get_selected_mirror)
+    if [[ $? -ne 0 ]]; then
+        echo_red "无法获取镜像源配置，安装失败。"
+        return 1
+    fi
+    
+    # 解析get_selected_mirror的输出（第一行是索引，第二行是URL）
+    local selected_index=$(echo "$selected_info" | sed -n '1p')
+    local selected_base_url=$(echo "$selected_info" | sed -n '2p')
+    
+    echo_green "✅ 将使用镜像源: ${MIRROR_NAMES[$selected_index]}"
+    echo_cyan "   基础地址: $selected_base_url"
+    
+    # 第三步：构建完整的加速下载链接并执行下载
+    echo_cyan "=== 步骤3/3: 开始下载并安装 ==="
+    # 完整的下载链接 = 镜像源基础地址 + 原始GitHub路径
+    local full_download_url="${selected_base_url}/https://github.com${original_github_path}"
+    echo_cyan "完整下载链接: $full_download_url"
     
     # 检查当前目录下是否已存在dstgo文件
     if [ -e "dstgo.tar.gz" ]; then
@@ -486,36 +654,12 @@ function install_dstgo() {
         echo_green "已删除现有dstgo文件夹"
     fi
     
-    # 显示镜像源选择菜单
-    echo_cyan "请选择下载镜像源："
-    for i in "${!mirror_names[@]}"; do
-        echo_green "$((i+1)). ${mirror_names[i]}"
-    done
-    
-    local selected_mirror
-    while true; do
-        read -p "请输入选择 [1-3]: " selected_mirror
-        
-        case $selected_mirror in
-            1|2|3)
-                break
-                ;;
-            *)
-                echo_red "无效选择，请输入 1-3 之间的数字"
-                ;;
-        esac
-    done
-    
     local download_success=false
     local output_file="dstgo.tar.gz"
     
-    # 使用选择的镜像源
-    local mirror_index=$((selected_mirror-1))
-    echo_cyan "使用镜像源：${mirror_names[mirror_index]}"
-    echo_cyan "下载链接: ${download_urls[mirror_index]}"
-    
-    if download "${download_urls[mirror_index]}" 3 15 "$output_file"; then
-        echo_green "镜像源 $selected_mirror 下载成功"
+    # 使用选择的镜像源进行下载
+    if download "$full_download_url" 3 15 "$output_file"; then
+        echo_green "下载成功！"
         
         # 文件验证步骤
         echo_cyan "验证下载的文件完整性..."
@@ -557,7 +701,9 @@ function install_dstgo() {
         
         echo_green "✅ dstgo 安装完成！"
     else
-        echo_red "镜像源 $selected_mirror 下载失败"
+        echo_red "下载失败！"
+        echo_cyan "  1. 检查网络连接后重试"
+        echo_cyan "  2. 返回镜像源选择，尝试另一个镜像源"
         return 1
     fi
 }
@@ -808,26 +954,30 @@ install_dst() {
     # 定义多个steamcmd下载地址
     steamcmd_urls=(
         "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://gh.927223.xyz/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
     )
 
     # 显示下载地址选择菜单
     echo_cyan "请选择steamcmd下载地址："
     echo_green "1. 镜像源1 (github.dpik.top)"
-    echo_green "2. 镜像源2 (ghfast.top)" 
-    echo_green "3. 官方源 (steamcdn-a.akamaihd.net)"
+    echo_green "2. 镜像源2 (gh.927223.xyz)" 
+    echo_green "3. 镜像源3 (cdn.gh-proxy.org)" 
+    echo_green "4. 镜像源4 (edgeone.gh-proxy.org)" 
+    echo_green "5. 官方源  (steamcdn-a.akamaihd.net)"
     
     local download_choice
     while true; do
-        read -p "请输入选择 [1-3]: " download_choice
+        read -p "请输入选择 [1-5]: " download_choice
         
         case $download_choice in
-            1|2|3)
+            1|2|3|4|5)
                 break
                 ;;
             *)
-                echo_red "无效选择，请输入 1-3 之间的数字"
+                echo_red "无效选择，请输入 1-5 之间的数字"
                 ;;
         esac
     done
@@ -839,7 +989,9 @@ install_dst() {
     case $download_choice in
         1) echo_cyan "使用镜像源1: $selected_url" ;;
         2) echo_cyan "使用镜像源2: $selected_url" ;;
-        3) echo_cyan "使用官方源: $selected_url" ;;
+        3) echo_cyan "使用镜像源3: $selected_url" ;;
+        4) echo_cyan "使用镜像源4: $selected_url" ;;
+        3) echo_cyan "使用官方源5: $selected_url" ;;
     esac
     
     echo_yellow "正在下载: $selected_url"
@@ -859,8 +1011,10 @@ install_dst() {
                 if [ $i -ne $url_index ]; then  # 跳过已尝试的地址
                     case $((i+1)) in
                         1) echo_green "$((i+1)). 镜像源1 (github.dpik.top)" ;;
-                        2) echo_green "$((i+1)). 镜像源2 (ghfast.top)" ;;
-                        3) echo_green "$((i+1)). 官方源 (steamcdn-a.akamaihd.net)" ;;
+                        2) echo_green "$((i+1)). 镜像源2 (gh.927223.xyz)" ;;
+                        3) echo_green "$((i+1)). 镜像源3 (cdn.gh-proxy.org)" ;;
+                        4) echo_green "$((i+1)). 镜像源4 (edgeone.gh-proxy.org)" ;;
+                        3) echo_green "$((i+1)). 官方源5 (steamcdn-a.akamaihd.net)" ;;
                     esac
                 fi
             done
@@ -868,7 +1022,7 @@ install_dst() {
             local new_choice
             while true; do
                 read -p "请输入选择: " new_choice
-                if [[ "$new_choice" =~ ^[1-3]$ ]] && [ "$new_choice" -ne "$download_choice" ]; then
+                if [[ "$new_choice" =~ ^[1-5]$ ]] && [ "$new_choice" -ne "$download_choice" ]; then
                     download_choice=$new_choice
                     url_index=$((download_choice-1))
                     selected_url="${steamcmd_urls[$url_index]}"
@@ -876,7 +1030,7 @@ install_dst() {
                 elif [ "$new_choice" -eq "$download_choice" ]; then
                     echo_red "不能选择已尝试的地址，请选择其他地址"
                 else
-                    echo_red "无效选择，请输入 1-3 之间的数字"
+                    echo_red "无效选择，请输入 1-5 之间的数字"
                 fi
             done
             
