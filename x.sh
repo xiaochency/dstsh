@@ -937,7 +937,8 @@ function setup_maintenance_task() {
     echo "$save_minute $save_hour * * * if screen -list | grep -q 'Cluster_1Master'; then screen -S Cluster_1Master -p 0 -X stuff 'c_save()\\n'; fi; if screen -list | grep -q 'Cluster_2Master'; then screen -S Cluster_2Master -p 0 -X stuff 'c_save()\\n'; fi" >> "$temp_cron"
     
     # 添加关闭服务器任务
-    echo "$minute $hour * * * screen -X -S Cluster_1Master quit && screen -X -S Cluster_1Caves quit && screen -X -S Cluster_2Master quit && screen -X -S Cluster_2Caves quit" >> "$temp_cron"
+    # echo "$minute $hour * * * screen -X -S Cluster_1Master quit && screen -X -S Cluster_1Caves quit && screen -X -S Cluster_2Master quit && screen -X -S Cluster_2Caves quit" >> "$temp_cron"
+    echo "$minute $hour * * * for session in Cluster_1Master Cluster_1Caves Cluster_2Master Cluster_2Caves; do screen -X -S \"\$session\" quit 2>/dev/null; done" >> "$temp_cron"
     
     # 添加 SteamCMD 更新任务（使用更简单的格式便于识别）
     echo "$steamcmd_minute $steamcmd_hour * * * cd $steamcmd_dir && ./steamcmd.sh +quit" >> "$temp_cron"
@@ -2118,7 +2119,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.4 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.5 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
