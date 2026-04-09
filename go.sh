@@ -570,6 +570,8 @@ function others() {
         echo_cyan "2. 禁用Ubuntu自动更新"
         echo_cyan "3. Steam加速器管理"
         echo_cyan "4. 更换软件源为阿里云镜像"
+        echo_cyan "5. 启用dstgo开机自启动"
+        echo_cyan "6. 禁用dstgo开机自启动"
         echo_cyan "0. 返回主菜单"
         echo_green "================================================"
 
@@ -591,6 +593,14 @@ function others() {
             4   )
                 echo_cyan "执行: 更换软件源为阿里云镜像..."
                 set_aliyun_mirror_simple
+                ;;
+            5)
+                echo_cyan "执行: 启用dstgo开机自启动..."
+                setup_autostart
+                ;;
+            6)
+                echo_cyan "执行: 禁用dstgo开机自启动..."
+                disable_autostart
                 ;;
             0)
                 echo_green "正在返回主菜单..."
@@ -1253,6 +1263,76 @@ function manage_crontab() {
     echo
     echo_green "当前自动任务列表:"
     crontab -l 2>/dev/null || echo_yellow "当前没有自动任务"
+}
+
+# 设置开机自启动
+function setup_autostart() {
+    local service_name="dstgo"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    local script_path="$HOME/dstgo/dst-admin-go"
+    
+    echo_cyan "正在配置 dstgo 开机自启动..."
+    
+    # 检查dstgo可执行文件
+    if [ ! -f "$script_path" ]; then
+        echo_red "错误：未找到 dstgo 可执行文件"
+        return 1
+    fi
+    
+    # 创建systemd服务文件
+    cat > "$service_file" << EOF
+[Unit]
+Description=Don't Starve Together Go Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=$HOME/dstgo
+ExecStart=$script_path
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    if [ $? -ne 0 ]; then
+        echo_red "错误：创建服务文件失败"
+        return 1
+    fi
+    
+    # 启用服务
+    systemctl daemon-reload
+    systemctl enable "$service_name"
+    
+    if [ $? -ne 0 ]; then
+        echo_red "错误：启用自启动失败"
+        return 1
+    fi
+    
+    echo_green "✅ 开机自启动已启用"
+    echo_cyan "启动服务: systemctl start dstgo"
+    echo_cyan "停止服务: systemctl stop dstgo"
+    
+    return 0
+}
+
+# 禁用开机自启动
+function disable_autostart() {
+    local service_name="dstgo"
+    
+    echo_cyan "正在禁用 dstgo 开机自启动..."
+    
+    # 停止并禁用服务
+    systemctl stop "$service_name" 2>/dev/null
+    systemctl disable "$service_name"
+    
+    echo_green "✅ 开机自启动已禁用"
+    
+    return 0
 }
 
 # 显示菜单函数
