@@ -3,7 +3,7 @@
 ##### 自定义常量 ######
 
 # 脚本发布版本
-script_version="v2026-05-16"
+script_version="v2026-02-15"
 
 # geekbench5发布版本
 geekbench_version="5.5.1"
@@ -71,14 +71,12 @@ _check_package() {
 
 ##### 创建目录 #####
 _make_dir() {
-    # 不再强制删除整个目录，而是检查是否存在
-    if [ ! -d "$dir" ]; then
-        mkdir -p $dir
-    else
-        # 如果存在，只清理旧的 swap 和 result 文件，保留 tar 包和解压后的文件夹
-        sudo swapoff $dir/swap &>/dev/null
-        rm -f $dir/swap $dir/result.txt $dir/result.html
-    fi
+    # 删除可能存在的残余文件
+    sudo swapoff $dir/swap &>/dev/null
+    rm -rf $dir
+
+    # 创建目录
+    mkdir $dir
 }
 
 ##### 检测内存，增加Swap #####
@@ -155,6 +153,9 @@ _check_swap() {
 }
 
 ##### 判断IP类型 #####
+# 对 IPv6 单栈的服务器来说进行测试没有意义，
+# 因为要将结果上传到 browser.geekbench.com 后才能拿到最后的跑分，
+# 但 browser.geekbench.com 仅有 IPv4、不支持 IPv6，测了也是白测。
 _check_ip() {
     if ! curl -s 'https://browser.geekbench.com' --connect-timeout 5 >/dev/null; then
         echo -e "对 IPv6 单栈的服务器来说进行测试没有意义，\n因为要将结果上传到 browser.geekbench.com 后才能拿到最后的跑分，\n但 browser.geekbench.com 仅有 IPv4、不支持 IPv6，测了也是白测。"
@@ -167,9 +168,7 @@ _check_region() {
     echo "请选择一个下载源："
     echo "  1) ghfast.top 镜像源"
     echo "  2) github.dpik.top 镜像源"
-    echo "  3) cdn.gh-proxy.org 镜像源"   # 新增选项 3
-    echo "  4) edgeone.gh-proxy.org 镜像源" # 新增选项 4
-    echo -e "\n请输入选项编号 (1-4)：\c"
+    echo -e "\n请输入选项编号 (1 或 2)：\c"
     read -r source_choice
     echo -e "\033[0m"
 
@@ -182,18 +181,8 @@ _check_region() {
             _blue "已选择源 2: github.dpik.top"
             geekbench_tar_url="https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
             ;;
-        # 新增源 3 的逻辑
-        3)
-            _blue "已选择源 3: cdn.gh-proxy.org"
-            geekbench_tar_url="https://cdn.gh-proxy.org/https://github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
-            ;;
-        # 新增源 4 的逻辑
-        4)
-            _blue "已选择源 4: edgeone.gh-proxy.org"
-            geekbench_tar_url="https://edgeone.gh-proxy.org/https://github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
-            ;;
         *)
-            _red "输入错误！请输入 1 到 4 之间的数字。"
+            _red "输入错误！请输入 1 或 2。"
             exit 1
             ;;
     esac
@@ -201,12 +190,6 @@ _check_region() {
 
 ##### 下载Geekbench tar包 ######
 _download_geekbench() {
-    # 检查文件是否已存在且不为空
-    if [ -s "$dir/${geekbench_tar_name}" ]; then
-        _yellow "检测到 $geekbench_tar_name 已存在于目录中，跳过下载。"
-        return 0
-    fi
-
     _yellow "测试软件下载中"
     wget --show-progress -O "$dir/${geekbench_tar_name}" "$geekbench_tar_url"
 }
@@ -281,7 +264,7 @@ _rm_dir() {
 
 ##### main #####
 _main() {
-    # trap '_rm_dir' EXIT
+    trap '_rm_dir' EXIT
     clear
     _banner
     _check_locale
@@ -296,27 +279,15 @@ _main() {
     _check_swap
     clear
     _banner
-
-    # --- 核心修改：将文件检查提前 ---
-    # 检查工作目录中是否已存在压缩包
-    if [ -s "$dir/${geekbench_tar_name}" ]; then
-        _yellow "检测到 $dir/${geekbench_tar_name} 已存在，跳过下载源选择和下载步骤。"
-        # 文件存在，直接跳过 _check_region 和 _download_geekbench
-    else
-        # 文件不存在，需要选择下载源并下载
-        _check_region
-        _download_geekbench
-    fi
-
-    # 检查压缩包是否存在且大小不为0（作为安全措施）
+    _check_region
+    _download_geekbench
+    # 檢查下載的壓縮包是否存在且大小不為0
     if [ ! -f "$dir/${geekbench_tar_name}" ] || [ ! -s "$dir/${geekbench_tar_name}" ]; then
-        _red "错误：Geekbench 压缩包不存在或为空。"
+        _red "錯誤：Geekbench 壓縮包下載失敗或文件為空。"
         exit 1
     fi
-    _yellow "Geekbench 压缩包准备完成。\n"
+    _yellow "Geekbench 壓縮包下載完成。\n"
     echo
-    
-    # 后续的解压和测试流程不变
     _unzip_tar
     clear
     _banner
