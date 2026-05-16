@@ -31,6 +31,7 @@ fi
 
 if [ -z "$1" ]; then
     acceleration_index=0
+
 else
     acceleration_index=$1
 fi
@@ -55,18 +56,83 @@ MIRROR_NAMES=(
 SELECTED_MIRROR_INDEX=""
 SELECTED_MIRROR_URL=""
 
-# 功能：直接选择镜像源（无测速）
-function select_mirror() {
+# 功能：测试镜像源延迟并允许用户手动选择
+function select_mirror_with_ping() {
     local total_mirrors=${#MIRROR_URLS[@]}
+    local ping_results=()
+    local valid_mirrors=()
 
     echo_green "================================================"
-    echo_green "           请选择下载镜像源"
+    echo_green "           镜像源延迟测试与选择"
     echo_green "================================================"
-    
-    # 显示可用的镜像源
+    echo_cyan "正在测试各镜像源延迟，请稍候..."
+
+    # ==== 检查并安装 bc 命令 ====
+    echo_cyan “检查系统依赖...”
+    if ! command -v bc &> /dev/null; then
+        echo_yellow “未找到 ‘bc‘ 命令，尝试自动安装...”
+        if apt-get update > /dev/null 2>&1 && apt-get install -y bc > /dev/null 2>&1; then
+            echo_green “✅ bc 命令安装成功。”
+        else
+            echo_red “错误：无法自动安装 ‘bc‘ 命令。请手动安装后重试。”
+            echo_cyan “您可以尝试执行：apt-get update && apt-get install -y bc”
+            return 1
+        fi
+    fi
+
+    # 测试每个镜像源的延迟
     for ((i=0; i<total_mirrors; i++)); do
-        echo_cyan "$((i+1)). ${MIRROR_NAMES[i]}"
+        # 从URL中提取主机名用于ping测试（移除https://）
+        local hostname=${MIRROR_URLS[i]#https://}
+        # 进一步处理，只取域名部分（去掉路径）
+        hostname=${hostname%%/*}
+        
+        echo_cyan "测试中: ${MIRROR_NAMES[i]}"
+        
+        # 使用curl测试连接时间（更符合下载场景）
+        # -w 输出连接时间， -s 静默模式， -o 输出到空， --connect-timeout 设置超时
+        local start_time=$(date +%s%N)
+        if curl -s --connect-timeout 3 -o /dev/null -w "%{time_total}" "${MIRROR_URLS[i]}" > /tmp/curl_time.txt 2>/dev/null; then
+            local end_time=$(date +%s%N)
+            local curl_time=$(cat /tmp/curl_time.txt)
+            # 将秒转换为毫秒，并保留两位小数
+            local delay_ms=$(echo "scale=2; $curl_time * 1000" | bc)
+            
+            if [[ -n "$delay_ms" ]]; then
+                ping_results[i]="$delay_ms"
+                valid_mirrors+=("$i")
+                echo_green "  ✅ 可达，延迟: ${delay_ms}ms"
+            else
+                ping_results[i]="timeout"
+                echo_red "  ❌ 测试失败 (超时或无响应)"
+            fi
+        else
+            ping_results[i]="timeout"
+            echo_red "  ❌ 测试失败 (连接错误)"
+        fi
+        # 短暂间隔，避免请求过快
+        sleep 0.5
     done
+
+    echo_green "----------------------------------------"
+    echo_cyan "延迟测试完成！请从以下选项中选择："
+    
+    # 显示可用的镜像源及其延迟
+    for ((i=0; i<total_mirrors; i++)); do
+        if [[ "${ping_results[i]}" == "timeout" ]]; then
+            echo_red "$((i+1)). ${MIRROR_NAMES[i]} - 不可达"
+        else
+            # 根据延迟显示不同颜色
+            if (( $(echo "${ping_results[i]} < 500" | bc -l 2>/dev/null) )); then
+                echo_green "$((i+1)). ${MIRROR_NAMES[i]} - 延迟: ${ping_results[i]}ms"
+            elif (( $(echo "${ping_results[i]} < 1500" | bc -l 2>/dev/null) )); then
+                echo_yellow "$((i+1)). ${MIRROR_NAMES[i]} - 延迟: ${ping_results[i]}ms"
+            else
+                echo_red "$((i+1)). ${MIRROR_NAMES[i]} - 延迟: ${ping_results[i]}ms"
+            fi
+        fi
+    done
+    
     echo_cyan "0. 取消选择，返回上一级"
     echo_green "================================================"
 
@@ -75,6 +141,7 @@ function select_mirror() {
     while true; do
         read -p "请输入选择 [0-$total_mirrors]: " user_choice
         
+        # 检查输入是否有效
         if [[ "$user_choice" =~ ^[0-9]+$ ]]; then
             if (( user_choice == 0 )); then
                 echo_yellow "已取消选择，返回上一级。"
@@ -83,10 +150,24 @@ function select_mirror() {
                 return 1
             elif (( user_choice >= 1 && user_choice <= total_mirrors )); then
                 local index=$((user_choice-1))
+                
+                # 检查选择的镜像源是否可达
+                if [[ "${ping_results[index]}" == "timeout" ]]; then
+                    echo_red "警告：您选择的镜像源当前不可达，可能影响下载速度。"
+                    read -p "是否仍要选择此镜像源？(y/N): " confirm_choice
+                    if [[ "$confirm_choice" != "y" && "$confirm_choice" != "Y" ]]; then
+                        continue
+                    fi
+                fi
+                
+                # 保存用户选择
                 SELECTED_MIRROR_INDEX=$index
                 SELECTED_MIRROR_URL="${MIRROR_URLS[index]}"
+                
                 echo_green "✅ 已选择: ${MIRROR_NAMES[index]}"
                 echo_green "   镜像地址: ${SELECTED_MIRROR_URL}"
+                echo_green "   延迟: ${ping_results[index]:-未知}ms"
+                
                 return 0
             else
                 echo_red "无效选择，请输入 0-$total_mirrors 之间的数字。"
@@ -100,9 +181,10 @@ function select_mirror() {
 # 功能：获取已选择的镜像源（供其他下载函数调用）
 function get_selected_mirror() {
     if [[ -z "$SELECTED_MIRROR_INDEX" || -z "$SELECTED_MIRROR_URL" ]]; then
-        echo_red "错误：尚未选择镜像源，请先运行 select_mirror 函数。"
+        echo_red "错误：尚未选择镜像源，请先运行 select_mirror_with_ping 函数。"
         return 1
     fi
+    # 返回选择的索引（从0开始）和URL
     echo "$SELECTED_MIRROR_INDEX"
     echo "$SELECTED_MIRROR_URL"
     return 0
@@ -113,7 +195,7 @@ function download() {
     local download_url="$1"
     local tries="$2"
     local timeout="$3"
-    local output_file="$4"
+    local output_file="$4"  # 添加输出文件参数
     
     wget -q --show-progress --tries="$tries" --timeout="$timeout" -O "$output_file" "$download_url"
     return $?
@@ -125,8 +207,13 @@ set_root_password() {
     echo "请输入新的root密码："
     passwd root
     
+    # 备份SSH配置文件
     cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    
+    # 修改sshd_config文件以允许root登录
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+    
+    # 重启SSH服务以应用更改
     systemctl restart ssh
     
     echo "远程root登录已启用，root密码已设置。"
@@ -136,29 +223,45 @@ set_root_password() {
 disable_ubuntu_autoupdate() {
     echo "正在禁用Ubuntu自动更新..."
     
+    # 停止并禁用自动更新服务
     systemctl stop unattended-upgrades
     systemctl disable unattended-upgrades
+    
+    # 停止并禁用定时器
     systemctl stop apt-daily.timer
     systemctl disable apt-daily.timer
     systemctl stop apt-daily-upgrade.timer
     systemctl disable apt-daily-upgrade.timer
     
+    # 修改20auto-upgrades配置文件
     AUTO_UPGRADE_FILE="/etc/apt/apt.conf.d/20auto-upgrades"
     if [ -f "$AUTO_UPGRADE_FILE" ]; then
+        echo "正在修改自动更新配置文件..."
+        # 备份原文件
         cp "$AUTO_UPGRADE_FILE" "$AUTO_UPGRADE_FILE.bak"
+        
+        # 检查并替换配置项
         if grep -q 'APT::Periodic::Update-Package-Lists "1";' "$AUTO_UPGRADE_FILE"; then
             sed -i 's/APT::Periodic::Update-Package-Lists "1";/APT::Periodic::Update-Package-Lists "0";/' "$AUTO_UPGRADE_FILE"
+            echo "已禁用自动更新包列表"
         fi
+        
         if grep -q 'APT::Periodic::Unattended-Upgrade "1";' "$AUTO_UPGRADE_FILE"; then
             sed -i 's/APT::Periodic::Unattended-Upgrade "1";/APT::Periodic::Unattended-Upgrade "0";/' "$AUTO_UPGRADE_FILE"
+            echo "已禁用无人值守升级"
         fi
+        
+        # 如果文件不存在相关配置，则添加禁用配置
         if ! grep -q 'APT::Periodic::Update-Package-Lists' "$AUTO_UPGRADE_FILE"; then
             echo 'APT::Periodic::Update-Package-Lists "0";' >> "$AUTO_UPGRADE_FILE"
         fi
+        
         if ! grep -q 'APT::Periodic::Unattended-Upgrade' "$AUTO_UPGRADE_FILE"; then
             echo 'APT::Periodic::Unattended-Upgrade "0";' >> "$AUTO_UPGRADE_FILE"
         fi
     else
+        # 如果文件不存在，创建并添加禁用配置
+        echo "创建自动更新配置文件并设置为禁用状态"
         echo 'APT::Periodic::Update-Package-Lists "0";' > "$AUTO_UPGRADE_FILE"
         echo 'APT::Periodic::Unattended-Upgrade "0";' >> "$AUTO_UPGRADE_FILE"
     fi
@@ -168,16 +271,19 @@ disable_ubuntu_autoupdate() {
 
 # 安装steam加速器
 function install_steam302() {
+    # 原始GitHub发布文件的相对路径
     local original_github_path="/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
     
     echo_cyan "开始安装 steam302..."
     
+    # 第一步：调用测速与选择函数
     echo_cyan "=== 步骤1/3: 选择下载镜像源 ==="
-    if ! select_mirror; then
+    if ! select_mirror_with_ping; then
         echo_yellow "安装过程中断，返回上一级。"
         return 1
     fi
     
+    # 第二步：获取用户已选择的镜像源地址
     echo_cyan "=== 步骤2/3: 获取镜像源配置 ==="
     local selected_info
     selected_info=$(get_selected_mirror)
@@ -186,36 +292,48 @@ function install_steam302() {
         return 1
     fi
     
+    # 解析get_selected_mirror的输出（第一行是索引，第二行是URL）
     local selected_index=$(echo "$selected_info" | sed -n '1p')
     local selected_base_url=$(echo "$selected_info" | sed -n '2p')
     
     echo_green "✅ 将使用镜像源: ${MIRROR_NAMES[$selected_index]}"
     echo_cyan "   基础地址: $selected_base_url"
     
+    # 第三步：构建完整的加速下载链接并执行下载
     echo_cyan "=== 步骤3/3: 开始下载并安装 ==="
+    # 完整的下载链接 = 镜像源基础地址 + 原始GitHub路径
     local full_download_url="${selected_base_url}/https://github.com${original_github_path}"
     echo_cyan "完整下载链接: $full_download_url"
     
+    # 检查当前目录下是否已存在Steamcommunity_302文件
     if [ -e "Steamcommunity_302.tar.gz" ]; then
         echo_yellow "检测到当前目录下已存在Steamcommunity_302文件，正在删除..."
         rm -f "Steamcommunity_302.tar.gz"
+        echo_green "已删除现有Steamcommunity_302文件"
     fi
     if [ -d "Steamcommunity_302" ]; then
         echo_yellow "检测到当前目录下已存在Steamcommunity_302文件夹，正在删除..."
         rm -rf "Steamcommunity_302"
+        echo_green "已删除现有Steamcommunity_302文件夹"
     fi
     
+    local download_success=false
     local output_file="Steamcommunity_302.tar.gz"
     
+    # 使用选择的镜像源进行下载
     if download "$full_download_url" 3 15 "$output_file"; then
         echo_green "下载成功！"
         
+        # 文件验证步骤 (保持与原函数一致)
         echo_cyan "验证下载的文件完整性..."
+        
+        # 1. 检查文件是否存在
         if [ ! -f "$output_file" ]; then
             echo_red "错误：下载的文件不存在"
             return 1
         fi
         
+        # 2. 检查文件大小
         file_size=$(stat -c%s "$output_file" 2>/dev/null || stat -f%z "$output_file" 2>/dev/null || echo "0")
         if [ "$file_size" -lt 1000 ]; then
             echo_red "错误：下载的文件大小异常（$file_size 字节），可能下载失败"
@@ -223,6 +341,7 @@ function install_steam302() {
             return 1
         fi
         
+        # 3. 测试压缩包完整性
         if ! tar -tzf "$output_file" >/dev/null 2>&1; then
             echo_red "错误：压缩文件损坏或格式不正确"
             rm -f "$output_file"
@@ -235,6 +354,8 @@ function install_steam302() {
             rm -f "$output_file"
             return 1
         fi
+        
+        download_success=true
         
         echo_green "✅ Steamcommunity_302 安装完成！"
     else
@@ -253,11 +374,13 @@ function start_steam302() {
 
     echo_cyan "正在启动Steamcommunity 302服务..."
 
+    # 检查目标目录是否存在
     if [ ! -d "$target_dir" ]; then
         echo_red "错误：目录 '$target_dir' 不存在，请确认该目录已正确下载或创建。"
         return 1
     fi
 
+    # 进入目标目录
     cd "$target_dir" || {
         echo_red "错误：无法进入目录 '$target_dir'。"
         return 1
@@ -265,24 +388,28 @@ function start_steam302() {
 
     echo_green "已成功进入目录: $(pwd)"
 
+    # 检查可执行文件是否存在
     if [ ! -f "$executable_file" ]; then
         echo_red "错误：可执行文件 '$executable_file' 不存在，请确认该文件已正确下载或编译。"
         echo_cyan "提示：请确保已在当前目录下运行，并且文件具有可执行权限。"
-        cd - > /dev/null
+        cd - > /dev/null  # 返回原目录
         return 1
     fi
 
+    # 给执行权限
     chmod +x Steamcommunity_302
     chmod +x steamcommunity_302.caddy
     chmod +x steamcommunity_302.cli
 
+    # 检查screen命令是否可用
     if ! command -v screen &> /dev/null; then
         echo_red "错误：系统未安装screen命令，无法创建后台会话。"
         echo_cyan "提示：您可以尝试安装screen：sudo apt install screen"
-        cd - > /dev/null
+        cd - > /dev/null  # 返回原目录
         return 1
     fi
 
+    # 检查是否已存在同名的screen会话
     if screen -list | grep -q "$screen_session_name"; then
         echo_yellow "警告：已存在名为 '$screen_session_name' 的screen会话。"
         read -p "是否要重新启动该服务？[y/N] " restart_choice
@@ -294,16 +421,20 @@ function start_steam302() {
                 ;;
             *)
                 echo_cyan "已取消启动操作。"
-                cd - > /dev/null
+                cd - > /dev/null  # 返回原目录
                 return 0
                 ;;
         esac
     fi
 
+    # 使用screen创建后台会话并运行程序
     echo_cyan "正在创建screen会话 '$screen_session_name' 并启动程序..."
     screen -dmS "$screen_session_name" "$executable_file"
+
+    # 等待片刻，让screen会话建立
     sleep 2
 
+    # 检查screen会话是否存在
     if screen -list | grep -q "$screen_session_name"; then
         echo_green "✓ Steamcommunity 302服务已成功启动并运行在后台！"
         echo_cyan "提示："
@@ -315,6 +446,7 @@ function start_steam302() {
         echo_cyan "请检查程序文件是否正常！"
     fi
 
+    # 返回原目录
     cd - > /dev/null
 }
 
@@ -324,6 +456,7 @@ function stop_steam302() {
     
     echo_cyan "正在停止Steamcommunity 302服务..."
     
+    # 检查是否存在指定的screen会话
     if screen -list | grep -q "$screen_session_name"; then
         echo_yellow "正在停止screen会话: $screen_session_name"
         screen -S "$screen_session_name" -X quit
@@ -379,6 +512,7 @@ function manage_steam302() {
 set_aliyun_mirror_simple() {
     echo_cyan "正在更换系统软件源为阿里云镜像..."
 
+    # 1. 备份当前的源列表
     local sources_file="/etc/apt/sources.list"
     local backup_file="/etc/apt/sources.list.bak.$(date +%Y%m%d%H%M%S)"
     
@@ -389,6 +523,8 @@ set_aliyun_mirror_simple() {
         return 1
     fi
 
+    # 2. 直接写入阿里云源 (适用于常见的Ubuntu LTS版本，如 20.04, 22.04, 24.04)
+    # 注意：这里使用通用的 mirrors.aliyun.com 地址
     cat > "$sources_file" << 'EOF'
 # 默认注释了源码镜像以提高 apt update 速度，如有需要可自行取消注释
 deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
@@ -412,6 +548,7 @@ EOF
         return 1
     fi
 
+    # 3. 更新软件包列表
     echo_cyan "正在更新软件包列表..."
     if apt-get update; then
         echo_green "✅ 软件源已成功更换，并且软件列表已更新。"
@@ -438,7 +575,7 @@ function others() {
         echo_cyan "0. 返回主菜单"
         echo_green "================================================"
 
-        read -p "请输入选择 [0-6]: " others_choice
+        read -p "请输入选择 [0-4]: " others_choice
 
         case $others_choice in
             1)
@@ -453,7 +590,7 @@ function others() {
                 echo_cyan "进入Steam加速器管理..."
                 manage_steam302
                 ;;
-            4)
+            4   )
                 echo_cyan "执行: 更换软件源为阿里云镜像..."
                 set_aliyun_mirror_simple
                 ;;
@@ -470,7 +607,7 @@ function others() {
                 return 0
                 ;;
             *)
-                echo_red "无效选择，请输入 0-6 之间的数字。"
+                echo_red "无效选择，请输入 0-4 之间的数字。"
                 ;;
         esac
 
@@ -481,16 +618,19 @@ function others() {
 
 # 安装dstgo程序
 function install_dstgo() {
+    # 原始GitHub发布文件的相对路径
     local original_github_path="/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
     
     echo_cyan "开始安装 dstgo..."
     
+    # 第一步：调用测速与选择函数
     echo_cyan "=== 步骤1/3: 选择下载镜像源 ==="
-    if ! select_mirror; then
+    if ! select_mirror_with_ping; then
         echo_yellow "安装过程中断，返回上一级。"
         return 1
     fi
     
+    # 第二步：获取用户已选择的镜像源地址
     echo_cyan "=== 步骤2/3: 获取镜像源配置 ==="
     local selected_info
     selected_info=$(get_selected_mirror)
@@ -499,36 +639,48 @@ function install_dstgo() {
         return 1
     fi
     
+    # 解析get_selected_mirror的输出（第一行是索引，第二行是URL）
     local selected_index=$(echo "$selected_info" | sed -n '1p')
     local selected_base_url=$(echo "$selected_info" | sed -n '2p')
     
     echo_green "✅ 将使用镜像源: ${MIRROR_NAMES[$selected_index]}"
     echo_cyan "   基础地址: $selected_base_url"
     
+    # 第三步：构建完整的加速下载链接并执行下载
     echo_cyan "=== 步骤3/3: 开始下载并安装 ==="
+    # 完整的下载链接 = 镜像源基础地址 + 原始GitHub路径
     local full_download_url="${selected_base_url}/https://github.com${original_github_path}"
     echo_cyan "完整下载链接: $full_download_url"
     
+    # 检查当前目录下是否已存在dstgo文件
     if [ -e "dstgo.tar.gz" ]; then
         echo_yellow "检测到当前目录下已存在dstgo文件，正在删除..."
         rm -f "dstgo.tar.gz"
+        echo_green "已删除现有dstgo文件"
     fi
     if [ -d "dstgo" ]; then
         echo_yellow "检测到当前目录下已存在dstgo文件夹，正在删除..."
         rm -rf "dstgo"
+        echo_green "已删除现有dstgo文件夹"
     fi
     
+    local download_success=false
     local output_file="dstgo.tar.gz"
     
+    # 使用选择的镜像源进行下载
     if download "$full_download_url" 3 15 "$output_file"; then
         echo_green "下载成功！"
         
+        # 文件验证步骤
         echo_cyan "验证下载的文件完整性..."
+        
+        # 1. 检查文件是否存在
         if [ ! -f "$output_file" ]; then
             echo_red "错误：下载的文件不存在"
             return 1
         fi
         
+        # 2. 检查文件大小
         file_size=$(stat -c%s "$output_file" 2>/dev/null || stat -f%z "$output_file" 2>/dev/null || echo "0")
         if [ "$file_size" -lt 1000 ]; then
             echo_red "错误：下载的文件大小异常（$file_size 字节），可能下载失败"
@@ -536,6 +688,7 @@ function install_dstgo() {
             return 1
         fi
         
+        # 3. 测试压缩包完整性
         if ! tar -tzf "$output_file" >/dev/null 2>&1; then
             echo_red "错误：压缩文件损坏或格式不正确"
             rm -f "$output_file"
@@ -549,6 +702,9 @@ function install_dstgo() {
             return 1
         fi
         
+        download_success=true
+        
+        # 后续配置操作
         mkdir -p $HOME/.klei/DoNotStarveTogether/backup
         mkdir -p $HOME/.klei/DoNotStarveTogether/download_mod
         cp -r $HOME/dstgo/static/MyDediServer $HOME/.klei/DoNotStarveTogether
@@ -571,12 +727,14 @@ function start_dstgo() {
 
     BIN=dst-admin-go
     
+    # 检查可执行文件是否存在
     if [ ! -f "$BIN" ]; then
         echo_red "错误：可执行文件 $BIN 不存在"
         echo_red "请先执行安装操作（选项1）"
         return 1
     fi
     
+    # 检查文件权限，如果没有执行权限则添加
     if [ ! -x "$BIN" ]; then
         echo_yellow "警告：$BIN 没有执行权限，正在添加执行权限..."
         chmod +x "$BIN"
@@ -588,6 +746,7 @@ function start_dstgo() {
         fi
     fi
     
+    # 检查程序是否已经在运行
     PID=$(ps -ef | grep "${BIN}" | grep -v grep | awk '{print $2}')
     if [ -n "$PID" ]; then
         echo_yellow "检测到 dstgo 服务已在运行 (PID: $PID)"
@@ -603,25 +762,34 @@ function start_dstgo() {
     fi
     
     echo_cyan "正在启动 dstgo 服务..."
+    
+    # 启动服务
     nohup ./$BIN >log.log 2>&1 &
     local start_pid=$!
+    
+    # 等待一段时间检查进程是否启动成功
     sleep 3
     
+    # 检查进程是否成功启动
     NEW_PID=$(ps -ef | grep "${BIN}" | grep -v grep | awk '{print $2}')
     if [ -n "$NEW_PID" ]; then
         echo_green "=================================================="
         echo_green "✅ dstgo 服务启动成功！"
         echo_green "✅ 请浏览器访问ip+端口"
         echo_green "=================================================="
+        
         return 0
     else
         echo_red "=================================================="
         echo_red "❌ dstgo 服务启动失败！"
         echo_red "=================================================="
+        
+        # 检查日志文件获取错误信息
         if [ -f "log.log" ]; then
             echo_red "最后几行日志内容："
             tail -10 log.log
         fi
+        
         return 1
     fi
 }
@@ -632,6 +800,7 @@ function stop_dstgo() {
     
     echo_cyan "正在检查 dstgo 服务状态..."
     
+    # 获取进程ID
     PID=$(ps -ef | grep "${BIN}" | grep -v grep | awk '{print $2}')
     
     if [ -z "$PID" ]; then
@@ -640,12 +809,15 @@ function stop_dstgo() {
     fi
     
     echo_yellow "检测到运行中的 dstgo 服务 (PID: $PID)"
+    
     echo_cyan "正在停止 dstgo 服务..."
     
+    # 优雅停止，先发送SIGTERM信号
     kill $PID
     local wait_count=0
     local max_wait=10
     
+    # 等待进程结束
     while [ $wait_count -lt $max_wait ]; do
         if ps -p $PID > /dev/null 2>&1; then
             echo_yellow "等待进程结束... ($((wait_count+1))/$max_wait)"
@@ -656,12 +828,14 @@ function stop_dstgo() {
         fi
     done
     
+    # 如果进程仍然存在，强制杀死
     if ps -p $PID > /dev/null 2>&1; then
         echo_red "进程未正常退出，正在强制终止..."
         kill -9 $PID
         sleep 2
     fi
     
+    # 再次检查进程是否已停止
     PID=$(ps -ef | grep "${BIN}" | grep -v grep | awk '{print $2}')
     if [ -z "$PID" ]; then
         echo_green "✅ dstgo 服务已成功停止！"
@@ -677,17 +851,21 @@ function stop_dstgo() {
 function change_port() {
     local config_file="$HOME/dstgo/config.yml"
     
+    # 检查配置文件是否存在
     if [ ! -f "$config_file" ]; then
         echo_red "错误：配置文件不存在，请先安装dstgo"
         return 1
     fi
     
+    # 显示当前端口
     local current_port=$(grep -E "port: [0-9]+" "$config_file" | grep -oE '[0-9]+' | head -1)
     echo_cyan "当前端口: ${current_port:-8082}"
     
+    # 输入新端口
     while true; do
         read -p "请输入新端口号 (1-65000): " new_port
         
+        # 验证输入
         if ! [[ "$new_port" =~ ^[0-9]+$ ]]; then
             echo_red "端口号必须是数字"
             continue
@@ -701,12 +879,14 @@ function change_port() {
         break
     done
     
+    # 修改端口
     if grep -q "port:" "$config_file"; then
         sed -i "s/port:.*/port: $new_port/g" "$config_file"
     else
         echo "port: $new_port" >> "$config_file"
     fi
     
+    # 验证修改
     local updated_port=$(grep -E "port: [0-9]+" "$config_file" | grep -oE '[0-9]+' | head -1)
     if [ "$updated_port" = "$new_port" ]; then
         echo_green "✅ 端口修改成功！新端口: $new_port"
@@ -724,6 +904,7 @@ function set_swap() {
     SWAPFILE=/swap.img
     SWAPSIZE=2G
 
+    # 检查是否已经存在交换文件
     if [ -f $SWAPFILE ]; then
         echo_green "交换文件已存在，跳过创建步骤"
     else
@@ -735,6 +916,7 @@ function set_swap() {
         echo_green "交换文件创建并启用成功"
     fi
 
+    # 添加到 /etc/fstab 以便开机启动
     if ! grep -q "$SWAPFILE" /etc/fstab; then
         echo_cyan "将交换文件添加到 /etc/fstab "
         echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
@@ -743,6 +925,7 @@ function set_swap() {
         echo_green "交换文件已在 /etc/fstab 中，跳过添加步骤"
     fi
 
+    # 更改swap配置并持久化
     sysctl -w vm.swappiness=20
     sysctl -w vm.min_free_kbytes=100000
     echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' > /etc/sysctl.d/dstgo_swap.conf
@@ -778,6 +961,7 @@ install_dst() {
         echo_green "已删除现有steamcmd_linux.tar.gz文件"
     fi
 
+    # 定义多个steamcmd下载地址
     steamcmd_urls=(
         "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://gh.927223.xyz/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
@@ -786,22 +970,29 @@ install_dst() {
         "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
     )
 
+    # 显示下载地址选择菜单
     echo_cyan "请选择steamcmd下载地址："
     echo_green "1. 镜像源1 (github.dpik.top)"
-    echo_green "2. 镜像源2 (gh.927223.xyz)"
-    echo_green "3. 镜像源3 (cdn.gh-proxy.org)"
-    echo_green "4. 镜像源4 (edgeone.gh-proxy.org)"
+    echo_green "2. 镜像源2 (gh.927223.xyz)" 
+    echo_green "3. 镜像源3 (cdn.gh-proxy.org)" 
+    echo_green "4. 镜像源4 (edgeone.gh-proxy.org)" 
     echo_green "5. 官方源  (steamcdn-a.akamaihd.net)"
     
     local download_choice
     while true; do
         read -p "请输入选择 [1-5]: " download_choice
+        
         case $download_choice in
-            1|2|3|4|5) break ;;
-            *) echo_red "无效选择，请输入 1-5 之间的数字" ;;
+            1|2|3|4|5)
+                break
+                ;;
+            *)
+                echo_red "无效选择，请输入 1-5 之间的数字"
+                ;;
         esac
     done
 
+    # 手动选择模式：使用指定地址
     local url_index=$((download_choice-1))
     local selected_url="${steamcmd_urls[$url_index]}"
     
@@ -810,28 +1001,30 @@ install_dst() {
         2) echo_cyan "使用镜像源2: $selected_url" ;;
         3) echo_cyan "使用镜像源3: $selected_url" ;;
         4) echo_cyan "使用镜像源4: $selected_url" ;;
-        5) echo_cyan "使用官方源: $selected_url" ;;
+        3) echo_cyan "使用官方源5: $selected_url" ;;
     esac
     
     echo_yellow "正在下载: $selected_url"
-    download_success=false
     if wget -q --show-progress --tries=3 --timeout=30 "$selected_url"; then
         echo_green "下载成功！"
         download_success=true
     else
         echo_red "下载失败！"
+        # 删除可能下载失败的文件
         rm -f steamcmd_linux.tar.gz 2>/dev/null
+        
+        # 询问是否尝试其他地址
         read -p "是否尝试其他下载地址？(y/n): " retry_confirm
         if [[ "$retry_confirm" == "y" || "$retry_confirm" == "Y" ]]; then
             echo_cyan "请重新选择下载地址："
             for i in "${!steamcmd_urls[@]}"; do
-                if [ $i -ne $url_index ]; then
+                if [ $i -ne $url_index ]; then  # 跳过已尝试的地址
                     case $((i+1)) in
-                        1) echo_green "1. 镜像源1 (github.dpik.top)" ;;
-                        2) echo_green "2. 镜像源2 (gh.927223.xyz)" ;;
-                        3) echo_green "3. 镜像源3 (cdn.gh-proxy.org)" ;;
-                        4) echo_green "4. 镜像源4 (edgeone.gh-proxy.org)" ;;
-                        5) echo_green "5. 官方源  (steamcdn-a.akamaihd.net)" ;;
+                        1) echo_green "$((i+1)). 镜像源1 (github.dpik.top)" ;;
+                        2) echo_green "$((i+1)). 镜像源2 (gh.927223.xyz)" ;;
+                        3) echo_green "$((i+1)). 镜像源3 (cdn.gh-proxy.org)" ;;
+                        4) echo_green "$((i+1)). 镜像源4 (edgeone.gh-proxy.org)" ;;
+                        3) echo_green "$((i+1)). 官方源5 (steamcdn-a.akamaihd.net)" ;;
                     esac
                 fi
             done
@@ -865,6 +1058,7 @@ install_dst() {
         fi
     fi
 
+    # 检查下载是否成功
     if [ "$download_success" = false ]; then
         echo_red "=================================================="
         echo_red "✘✘✘ 下载失败！"
@@ -873,13 +1067,14 @@ install_dst() {
         exit 1
     fi
 
+    # 验证下载的文件
     if [ ! -f "steamcmd_linux.tar.gz" ]; then
         echo_red "下载的文件不存在，请检查下载过程"
         exit 1
     fi
 
     file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
-    if [ "$file_size" -lt 1000000 ]; then
+    if [ "$file_size" -lt 1000000 ]; then  # 小于1MB可能是错误页面
         echo_yellow "下载的文件大小异常 ($file_size 字节)，可能下载了错误页面"
         rm -f steamcmd_linux.tar.gz
         echo_red "下载的文件可能损坏，请重试或手动下载"
@@ -889,14 +1084,19 @@ install_dst() {
     echo_green "文件验证通过，开始解压..."
     tar -xvzf steamcmd_linux.tar.gz
     
+    # 初始安装
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     
+    # 设置最大重试次数
     max_retries=3
     retry_count=0
     install_success=false
     
+    # 验证安装并重试
     while [ $retry_count -lt $max_retries ]; do
         echo_cyan "正在验证服务器安装 (尝试 $((retry_count+1))/$((max_retries+1)))..."
+        
+        # 检查安装目录是否存在
         if [ -d "$HOME/dst-dedicated-server/bin/" ]; then
             cd $HOME/dst-dedicated-server/bin/ && {
                 install_success=true
@@ -904,30 +1104,42 @@ install_dst() {
             }
         fi
         
+        # 如果验证失败，尝试重新安装
         if [ $retry_count -lt $max_retries ]; then
             echo_red "======================================"
             echo_red "✘✘ 服务器安装验证失败！"
             echo_red "✘✘ 正在尝试重新安装 ($((retry_count+1))/$max_retries)..."
             echo_red "======================================"
+            
+            # 进入steamcmd文件夹重新执行安装命令
             cd $HOME/steamcmd || {
                 echo_red "无法进入 $HOME/steamcmd 目录"
                 break
             }
+            
             echo_cyan "正在重新执行安装命令..."
             ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
+            
+            # 增加重试计数器
             retry_count=$((retry_count+1))
+            
+            # 等待一下再继续
             sleep 2
         fi
     done
     
+    # 检查最终安装结果
     if [ "$install_success" = true ]; then
         echo_green "=================================================="
         echo_green "✅ 服务器安装验证通过！"
         echo_green "=================================================="
+        
+        # 修复依赖
         cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst-dedicated-server/bin/lib32/ 2>/dev/null
         cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst-dedicated-server/bin/lib32/ 2>/dev/null
         cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst-dedicated-server/bin64/lib64/ 2>/dev/null
         echo_green "依赖已修复"
+        
         echo_green "=================================================="
         echo_green "✅ Don't Starve Together 服务器安装完成！"
         echo_green "=================================================="
@@ -940,6 +1152,7 @@ install_dst() {
         exit 1
     fi
 
+    # 返回root根目录
     cd "$HOME"
     echo
 }
@@ -969,6 +1182,7 @@ function manage_crontab() {
     
     read -p "请输入选择 [0-3]: " crontab_choice
     
+    # 定义任务内容
     morning_task="10 6 * * * cd /root/steamcmd && /root/steamcmd/steamcmd.sh +quit > /dev/null 2>&1"
     evening_task="10 22 * * * cd /root/steamcmd && /root/steamcmd/steamcmd.sh +quit > /dev/null 2>&1"
     
@@ -978,8 +1192,12 @@ function manage_crontab() {
             if crontab -l | grep -F "$morning_task" > /dev/null; then
                 echo_red "6:10自动任务已存在，无需重复添加"
             else
+                # 备份当前crontab
                 crontab -l > /tmp/crontab_backup 2>/dev/null || echo "# Crontab backup" > /tmp/crontab_backup
+                
+                # 添加新任务
                 (crontab -l 2>/dev/null; echo "$morning_task") | crontab -
+                
                 if [ $? -eq 0 ]; then
                     echo_green "6:10自动任务添加成功"
                     echo_cyan "任务内容: $morning_task"
@@ -993,8 +1211,12 @@ function manage_crontab() {
             if crontab -l | grep -F "$evening_task" > /dev/null; then
                 echo_red "22:10自动任务已存在，无需重复添加"
             else
+                # 备份当前crontab
                 crontab -l > /tmp/crontab_backup 2>/dev/null || echo "# Crontab backup" > /tmp/crontab_backup
+                
+                # 添加新任务
                 (crontab -l 2>/dev/null; echo "$evening_task") | crontab -
+                
                 if [ $? -eq 0 ]; then
                     echo_green "22:10自动任务添加成功"
                     echo_cyan "任务内容: $evening_task"
@@ -1005,10 +1227,15 @@ function manage_crontab() {
             ;;
         3)
             echo_cyan "正在查找并移除steamcmd相关自动任务..."
+            # 创建临时文件，过滤掉包含steamcmd的任务
             crontab -l 2>/dev/null | grep -v "steamcmd" > /tmp/crontab_new
+            
+            # 安装新的crontab
             crontab /tmp/crontab_new
+            
             if [ $? -eq 0 ]; then
                 echo_green "steamcmd自动任务已成功移除"
+                # 显示当前剩余的自动任务
                 current_tasks=$(crontab -l 2>/dev/null | wc -l)
                 if [ $current_tasks -eq 0 ]; then
                     echo_yellow "当前没有自动任务"
@@ -1019,6 +1246,8 @@ function manage_crontab() {
             else
                 echo_red "任务移除失败"
             fi
+            
+            # 清理临时文件
             rm -f /tmp/crontab_new
             ;;
         0)
@@ -1030,6 +1259,7 @@ function manage_crontab() {
             ;;
     esac
     
+    # 显示当前crontab状态
     echo
     echo_green "当前自动任务列表:"
     crontab -l 2>/dev/null || echo_yellow "当前没有自动任务"
@@ -1043,11 +1273,13 @@ function setup_autostart() {
     
     echo_cyan "正在配置 dstgo 开机自启动..."
     
+    # 检查dstgo可执行文件
     if [ ! -f "$script_path" ]; then
         echo_red "错误：未找到 dstgo 可执行文件"
         return 1
     fi
     
+    # 创建systemd服务文件
     cat > "$service_file" << EOF
 [Unit]
 Description=Don't Starve Together Go Server
@@ -1072,6 +1304,7 @@ EOF
         return 1
     fi
     
+    # 启用服务
     systemctl daemon-reload
     systemctl enable "$service_name"
     
@@ -1093,6 +1326,7 @@ function disable_autostart() {
     
     echo_cyan "正在禁用 dstgo 开机自启动..."
     
+    # 停止并禁用服务
     systemctl stop "$service_name" 2>/dev/null
     systemctl disable "$service_name"
     
@@ -1108,6 +1342,7 @@ function show_menu() {
     echo_green "           dstgo 管理脚本菜单"
     echo_green "================================================"
     echo
+    
     echo_cyan "1. 安装dstgo"
     echo_cyan "2. 启动dstgo" 
     echo_cyan "3. 停止dstgo"
@@ -1116,6 +1351,7 @@ function show_menu() {
     echo_cyan "6. 修改端口"
     echo_cyan "7. steamcmd自动更新"
     echo_cyan "0. 更多功能"
+    
     echo
     echo_green "================================================"
 }
@@ -1151,7 +1387,7 @@ function main_menu() {
                 echo_cyan "执行: 修改端口"
                 change_port
                 ;;
-            7)
+            7)  # 新增选项处理
                 echo_cyan "执行: 管理自动任务"
                 manage_crontab
                 ;;
@@ -1173,6 +1409,7 @@ function main_menu() {
 if [ -z "$1" ]; then
     main_menu
 else
+    # 如果有参数，可以根据参数执行相应操作
     case "$1" in
         "install")
             install_dstgo
@@ -1192,7 +1429,7 @@ else
         "change_port")
             change_port
             ;;
-        "manage-crontab")
+        "manage-crontab")  # 新增参数支持
             manage_crontab
             ;;
         *)
