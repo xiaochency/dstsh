@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# 2026.05.16
 USER=$(whoami)
 ExeFile="$HOME/dstgo"
 install_dir="$HOME/dst-dedicated-server"

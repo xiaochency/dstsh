@@ -3,7 +3,7 @@
 ##### 自定义常量 ######
 
 # 脚本发布版本
-script_version="v2026-05-16"
+script_version="v2026-05-15"
 
 # geekbench5发布版本
 geekbench_version="5.5.1"
