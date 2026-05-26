@@ -171,13 +171,11 @@ Install_dst() {
         echo_info "$file_name 不存在，继续下载steamcmd"
     fi
 
-    # 定义多个steamcmd下载地址（新增两个镜像源）
+    # 定义多个steamcmd下载地址
     steamcmd_urls=(
         "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
-        "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
     )
 
     # 显示下载地址选择菜单
@@ -185,19 +183,17 @@ Install_dst() {
     echo_success "1. 镜像源1 (github.dpik.top)"
     echo_success "2. 镜像源2 (ghfast.top)" 
     echo_success "3. 官方源 (steamcdn-a.akamaihd.net)"
-    echo_success "4. 镜像源3 (cdn.gh-proxy.org)"
-    echo_success "5. 镜像源4 (edgeone.gh-proxy.org)"
     
     local download_choice
     while true; do
-        read -p "请输入选择 [1-5]: " download_choice
+        read -p "请输入选择 [1-3]: " download_choice
         
         case $download_choice in
-            1|2|3|4|5)
+            1|2|3)
                 break
                 ;;
             *)
-                echo_error "无效选择，请输入 1-5 之间的数字"
+                echo_error "无效选择，请输入 1-3 之间的数字"
                 ;;
         esac
     done
@@ -210,8 +206,6 @@ Install_dst() {
         1) echo_info "使用镜像源1: $selected_url" ;;
         2) echo_info "使用镜像源2: $selected_url" ;;
         3) echo_info "使用官方源: $selected_url" ;;
-        4) echo_info "使用镜像源3: $selected_url" ;;
-        5) echo_info "使用镜像源4: $selected_url" ;;
     esac
     
     echo_info "正在下载: $selected_url"
@@ -230,11 +224,9 @@ Install_dst() {
             for i in "${!steamcmd_urls[@]}"; do
                 if [ $i -ne $url_index ]; then  # 跳过已尝试的地址
                     case $((i+1)) in
-                        1) echo_success "1. 镜像源1 (github.dpik.top)" ;;
-                        2) echo_success "2. 镜像源2 (ghfast.top)" ;;
-                        3) echo_success "3. 官方源 (steamcdn-a.akamaihd.net)" ;;
-                        4) echo_success "4. 镜像源3 (cdn.gh-proxy.org)" ;;
-                        5) echo_success "5. 镜像源4 (edgeone.gh-proxy.org)" ;;
+                        1) echo_success "$((i+1)). 镜像源1 (github.dpik.top)" ;;
+                        2) echo_success "$((i+1)). 镜像源2 (ghfast.top)" ;;
+                        3) echo_success "$((i+1)). 官方源 (steamcdn-a.akamaihd.net)" ;;
                     esac
                 fi
             done
@@ -242,7 +234,7 @@ Install_dst() {
             local new_choice
             while true; do
                 read -p "请输入选择: " new_choice
-                if [[ "$new_choice" =~ ^[1-5]$ ]] && [ "$new_choice" -ne "$download_choice" ]; then
+                if [[ "$new_choice" =~ ^[1-3]$ ]] && [ "$new_choice" -ne "$download_choice" ]; then
                     download_choice=$new_choice
                     url_index=$((download_choice-1))
                     selected_url="${steamcmd_urls[$url_index]}"
@@ -250,7 +242,7 @@ Install_dst() {
                 elif [ "$new_choice" -eq "$download_choice" ]; then
                     echo_error "不能选择已尝试的地址，请选择其他地址"
                 else
-                    echo_error "无效选择，请输入 1-5 之间的数字"
+                    echo_error "无效选择，请输入 1-3 之间的数字"
                 fi
             done
             
@@ -344,6 +336,8 @@ Install_dst() {
             if [ $retry_count -lt $max_retries ]; then
                 echo_warning "等待 6 秒后重试..."
                 sleep 6
+                # 清理可能的残留文件
+                # rm -rf "$install_dir" 2>/dev/null
                 cd $HOME/steamcmd
             else
                 echo_error "=================================================="
@@ -1691,13 +1685,13 @@ function modify_server_port() {
 # 安装steam加速器
 function install_steam302() {
     local download_urls=(
-        "https://cdn.gh-proxy.org/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://gh-proxy.net/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
         "https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
         "https://ghfast.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
     )
     
     local mirror_names=(
-        "镜像源1 (cdn.gh-proxy.org)"
+        "镜像源1 (gh-proxy.net)"
         "镜像源2 (github.dpik.top)" 
         "镜像源3 (ghfast.top)"
     )
@@ -1817,10 +1811,17 @@ function start_steam302() {
         return 1
     fi
 
-    # 可执行权限
-    chmod +x Steamcommunity_302
-    chmod +x steamcommunity_302.caddy
-    chmod +x steamcommunity_302.cli
+    # 检查文件是否具有可执行权限
+    if [ ! -x "$executable_file" ]; then
+        echo_warning "警告：文件 '$executable_file' 没有可执行权限，正在尝试添加..."
+        chmod +x "$executable_file"
+        if [ $? -ne 0 ]; then
+            echo_error "错误：无法为文件添加可执行权限。"
+            cd - > /dev/null  # 返回原目录
+            return 1
+        fi
+        echo_success "已成功添加可执行权限。"
+    fi
 
     # 检查screen命令是否可用
     if ! command -v screen &> /dev/null; then
@@ -2118,7 +2119,7 @@ while true; do
     # 获取当前版本
     current_version=$(get_current_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.6 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.5 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${current_version}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
