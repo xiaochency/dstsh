@@ -170,11 +170,11 @@ function install_dmp() {
     check_curl
 
     dmp_urls=(
-        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.2/dmp.tgz"
-        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.2/dmp.tgz"
-        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.2/dmp.tgz"
-        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.2/dmp.tgz"
-        "https://gh.llkk.cc/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.2/dmp.tgz"
+        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://gh.llkk.cc/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
     )
 
     # 显示下载地址选择菜单
@@ -291,28 +291,28 @@ function set_swap() {
 	SWAPFILE=/swap.img
     SWAPSIZE=2G
 
-	# 检查是否已经存在交换文件
-	if [ -f $SWAPFILE ]; then
-		echo_green "交换文件已存在，跳过创建步骤"
+	# 检查是否已有 swap 设备或文件
+	if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
+		echo_green "检测到已有 swap 设备 (/dev/dm-1) 或 swap 文件 ($SWAPFILE)，跳过创建步骤"
 	else
-		echo_cyan "创建交换文件..."
+		echo_cyan "未检测到 swap 设备或文件，正在创建 swap 文件..."
 		sudo fallocate -l $SWAPSIZE $SWAPFILE
 		sudo chmod 600 $SWAPFILE
 		sudo mkswap $SWAPFILE
 		sudo swapon $SWAPFILE
 		echo_green "交换文件创建并启用成功"
+
+		# 添加到 /etc/fstab 以便开机启动
+		if ! grep -q "$SWAPFILE" /etc/fstab; then
+			echo_cyan "将交换文件添加到 /etc/fstab "
+			echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+			echo_green "交换文件已添加到开机启动"
+		else
+			echo_green "交换文件已在 /etc/fstab 中，跳过添加步骤"
+		fi
 	fi
 
-	# 添加到 /etc/fstab 以便开机启动
-	if ! grep -q "$SWAPFILE" /etc/fstab; then
-		echo_cyan "将交换文件添加到 /etc/fstab "
-		echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
-		echo_green "交换文件已添加到开机启动"
-	else
-		echo_green "交换文件已在 /etc/fstab 中，跳过添加步骤"
-	fi
-
-	# 更改swap配置并持久化
+	# 更改swap配置并持久化（无论 swap 是否已存在都执行）
 	sysctl -w vm.swappiness=20
 	sysctl -w vm.min_free_kbytes=100000
 	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' >/etc/sysctl.d/dmp_swap.conf
@@ -414,8 +414,6 @@ install_dst() {
     apt-get install -y libcurl4-gnutls-dev
     echo_green "环境依赖安装完毕"
 
-    set_swap
-    echo_cyan "设置虚拟内存2GB"
     mkdir $HOME/steamcmd
     cd $HOME/steamcmd
 
@@ -816,10 +814,11 @@ function prompt_user() {
 	echo_green "[8]: 停止vps自动更新"
 	echo_green "[9]: 查看DMP所有用户名"
 	echo_green "[10]: 修改DMP用户密码"
+    echo_green "[11]: 设置虚拟内存"
 	echo_yellow "————————————————————————————————————————————————————————————"
 	echo_green "[q]: 退出脚本"
 	echo_yellow "————————————————————————————————————————————————————————————"
-	echo_yellow "请输入要执行的操作 [0-10] 或输入 q 退出脚本: "
+	echo_yellow "请输入要执行的操作 [0-11] 或输入 q 退出脚本: "
 }
 
 # 使用无限循环让用户输入命令
@@ -885,7 +884,11 @@ while true; do
 		echo_yellow "按回车返回主菜单..."
 		read -r
         ;;
-
+    11)
+        set_swap
+        echo_green "已设置虚拟内存"
+        break
+        ;;
 	q|Q)
 		exit 0
 		;;
