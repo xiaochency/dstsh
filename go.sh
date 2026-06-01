@@ -435,10 +435,11 @@ function others() {
         echo_cyan "4. 更换软件源为阿里云镜像"
         echo_cyan "5. 启用dstgo开机自启动"
         echo_cyan "6. 禁用dstgo开机自启动"
+        echo_cyan "7. 开启虚拟内存"
         echo_cyan "0. 返回主菜单"
         echo_green "================================================"
 
-        read -p "请输入选择 [0-6]: " others_choice
+        read -p "请输入选择 [0-7]: " others_choice
 
         case $others_choice in
             1)
@@ -465,12 +466,16 @@ function others() {
                 echo_cyan "执行: 禁用dstgo开机自启动..."
                 disable_autostart
                 ;;
+             7)
+	        echo_cyan "执行: 开启虚拟内存..."
+                set_swap
+                ;;
             0)
                 echo_green "正在返回主菜单..."
                 return 0
                 ;;
             *)
-                echo_red "无效选择，请输入 0-6 之间的数字。"
+                echo_red "无效选择，请输入 0-7 之间的数字。"
                 ;;
         esac
 
@@ -721,33 +726,36 @@ function change_port() {
 
 # 设置虚拟内存
 function set_swap() {
-    SWAPFILE=/swap.img
+	SWAPFILE=/swap.img
     SWAPSIZE=2G
 
-    if [ -f $SWAPFILE ]; then
-        echo_green "交换文件已存在，跳过创建步骤"
-    else
-        echo_cyan "创建交换文件..."
-        sudo fallocate -l $SWAPSIZE $SWAPFILE
-        sudo chmod 600 $SWAPFILE
-        sudo mkswap $SWAPFILE
-        sudo swapon $SWAPFILE
-        echo_green "交换文件创建并启用成功"
-    fi
+	# 检查是否已有 swap 设备或文件
+	if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
+		echo_green "检测到已有 swap 设备 (/dev/dm-1) 或 swap 文件 ($SWAPFILE)，跳过创建步骤"
+	else
+		echo_cyan "未检测到 swap 设备或文件，正在创建 swap 文件..."
+		sudo fallocate -l $SWAPSIZE $SWAPFILE
+		sudo chmod 600 $SWAPFILE
+		sudo mkswap $SWAPFILE
+		sudo swapon $SWAPFILE
+		echo_green "交换文件创建并启用成功"
 
-    if ! grep -q "$SWAPFILE" /etc/fstab; then
-        echo_cyan "将交换文件添加到 /etc/fstab "
-        echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
-        echo_green "交换文件已添加到开机启动"
-    else
-        echo_green "交换文件已在 /etc/fstab 中，跳过添加步骤"
-    fi
+		# 添加到 /etc/fstab 以便开机启动
+		if ! grep -q "$SWAPFILE" /etc/fstab; then
+			echo_cyan "将交换文件添加到 /etc/fstab "
+			echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+			echo_green "交换文件已添加到开机启动"
+		else
+			echo_green "交换文件已在 /etc/fstab 中，跳过添加步骤"
+		fi
+	fi
 
-    sysctl -w vm.swappiness=20
-    sysctl -w vm.min_free_kbytes=100000
-    echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' > /etc/sysctl.d/dstgo_swap.conf
+	# 更改swap配置并持久化（无论 swap 是否已存在都执行）
+	sysctl -w vm.swappiness=20
+	sysctl -w vm.min_free_kbytes=100000
+	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' >/etc/sysctl.d/dmp_swap.conf
 
-    echo_green "系统swap设置成功"
+	echo_green "系统swap设置成功"
 }
 
 # 安装服务器
@@ -767,8 +775,6 @@ install_dst() {
     apt-get install -y procps
     echo_green "环境依赖安装完毕"
 
-    set_swap
-    echo_cyan "设置虚拟内存2GB"
     mkdir $HOME/steamcmd
     cd $HOME/steamcmd
 
