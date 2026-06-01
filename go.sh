@@ -1,5 +1,5 @@
 #!/bin/bash
-# 2026.05.17
+# 2026.06.01
 USER=$(whoami)
 ExeFile="$HOME/dstgo"
 install_dir="$HOME/dst-dedicated-server"
@@ -481,7 +481,7 @@ function others() {
 
 # 安装dstgo程序
 function install_dstgo() {
-    local original_github_path="/xiaochency/dst-admin-go/releases/download/1.5.3/dstgo.tar.gz"
+    local original_github_path="/xiaochency/dst-admin-go/releases/download/1.6.1/dstgo.tar.gz"
     
     echo_cyan "开始安装 dstgo..."
     
