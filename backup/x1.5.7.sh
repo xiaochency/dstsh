@@ -2,6 +2,7 @@
 
 # =============================================================================
 # 饥荒联机版云服务器管理脚本
+# 版本: 1.5.7
 # 作者: xiaochency
 # =============================================================================
 
@@ -100,20 +101,6 @@ download() {
     wget -q --show-progress --tries="$tries" --timeout="$timeout" "$url"
 }
 
-download_with_speed_check() {
-    local url="$1"
-    local output="$2"          # 输出文件名，可选
-    local min_speed="${3:-100k}"   # 最低速度，默认 100KB/s
-    local speed_time="${4:-10}"   # 低于最低速度允许的秒数，默认10秒
-
-    local curl_opts="-# -L --connect-timeout 10 --speed-limit $min_speed --speed-time $speed_time"
-    if [[ -n "$output" ]]; then
-        curl $curl_opts -o "$output" "$url"
-    else
-        curl $curl_opts -O "$url"
-    fi
-}
-
 # 创建必要目录（安装时使用）
 create_klei_dirs() {
     local clusters=("Cluster_1" "Cluster_2")
@@ -128,37 +115,33 @@ create_klei_dirs() {
 }
 
 # 设置虚拟内存
-set_swap() {
+settingSwap() {
     local swapfile="/swap.img"
     local swapsize="2G"
 
-    # 检查是否已有 swap 设备或文件
-	if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
-		echo_success "检测到已有 swap 设备 (/dev/dm-1) 或 swap 文件 ($SWAPFILE)，跳过创建步骤"
-	else
-		echo_info "未检测到 swap 设备或文件，正在创建 swap 文件..."
-		sudo fallocate -l $SWAPSIZE $SWAPFILE
-		sudo chmod 600 $SWAPFILE
-		sudo mkswap $SWAPFILE
-		sudo swapon $SWAPFILE
-		echo_success "交换文件创建并启用成功"
+    if [[ -f "$swapfile" ]]; then
+        echo_success "交换文件已存在，跳过创建步骤"
+    else
+        echo_info "创建交换文件..."
+        sudo fallocate -l "$swapsize" "$swapfile"
+        sudo chmod 600 "$swapfile"
+        sudo mkswap "$swapfile"
+        sudo swapon "$swapfile"
+        echo_success "交换文件创建并启用成功"
+    fi
 
-		# 添加到 /etc/fstab 以便开机启动
-		if ! grep -q "$SWAPFILE" /etc/fstab; then
-			echo_info "将交换文件添加到 /etc/fstab "
-			echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
-			echo_success "交换文件已添加到开机启动"
-		else
-			echo_success "交换文件已在 /etc/fstab 中，跳过添加步骤"
-		fi
-	fi
+    if ! grep -q "$swapfile" /etc/fstab; then
+        echo_info "将交换文件添加到 /etc/fstab"
+        echo "$swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+        echo_success "交换文件已添加到开机启动"
+    else
+        echo_success "交换文件已在 /etc/fstab 中，跳过添加步骤"
+    fi
 
-	# 更改swap配置并持久化（无论 swap 是否已存在都执行）
-	sysctl -w vm.swappiness=20
-	sysctl -w vm.min_free_kbytes=100000
-	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' >/etc/sysctl.d/dmp_swap.conf
-
-	echo_green "系统swap设置成功"
+    sysctl -w vm.swappiness=20
+    sysctl -w vm.min_free_kbytes=100000
+    echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' > /etc/sysctl.d/dmp_swap.conf
+    echo_success "系统swap设置成功"
 }
 
 # 下载 steamcmd 并处理镜像源
@@ -170,26 +153,72 @@ download_steamcmd() {
         "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
     )
-    local output="steamcmd_linux.tar.gz"
+    local names=(
+        "镜像源1 (github.dpik.top)"
+        "镜像源2 (ghfast.top)"
+        "官方源 (steamcdn-a.akamaihd.net)"
+        "镜像源3 (cdn.gh-proxy.org)"
+        "镜像源4 (edgeone.gh-proxy.org)"
+    )
 
-    for url in "${urls[@]}"; do
-        echo_info "尝试从 $url 下载（速度低于 100KB/s 持续 10 秒将自动切换）..."
-        if download_with_speed_check "$url" "$output" "100k" 10; then
-            # 验证文件大小
-            local size=$(stat -c%s "$output" 2>/dev/null || echo 0)
-            if [[ $size -ge 1000000 ]]; then
-                echo_success "下载成功并验证通过，来源：$url"
-                tar -xzf "$output" && rm -f "$output" && return 0
+    echo_info "请选择steamcmd下载地址："
+    for i in "${!names[@]}"; do
+        echo_success "$((i+1)). ${names[i]}"
+    done
+
+    local choice
+    while true; do
+        read -p "请输入选择 [1-5]: " choice
+        if [[ "$choice" =~ ^[1-5]$ ]]; then break; fi
+        echo_error "无效选择，请输入 1-5 之间的数字"
+    done
+
+    local idx=$((choice-1))
+    local url="${urls[idx]}"
+    echo_info "使用 ${names[idx]}: $url"
+
+    if wget -q --show-progress --tries=3 --timeout=30 "$url"; then
+        echo_success "下载成功！"
+        return 0
+    else
+        echo_error "下载失败！"
+        rm -f steamcmd_linux.tar.gz
+        read -p "是否尝试其他下载地址？(y/n): " retry
+        if [[ "$retry" =~ ^[Yy]$ ]]; then
+            echo_info "请重新选择下载地址："
+            # 过滤掉已尝试的地址
+            local remain=()
+            for i in "${!names[@]}"; do
+                if [[ $i -ne $idx ]]; then
+                    echo_success "$((i+1)). ${names[i]}"
+                    remain+=("$i")
+                fi
+            done
+            local new_choice
+            while true; do
+                read -p "请输入选择: " new_choice
+                if [[ "$new_choice" =~ ^[1-5]$ ]] && (( new_choice-1 != idx )); then
+                    break
+                elif (( new_choice-1 == idx )); then
+                    echo_error "不能选择已尝试的地址，请选择其他地址"
+                else
+                    echo_error "无效选择"
+                fi
+            done
+            local new_url="${urls[new_choice-1]}"
+            echo_info "正在重新下载: $new_url"
+            if wget -q --show-progress --tries=3 --timeout=30 "$new_url"; then
+                echo_success "下载成功！"
+                return 0
             else
-                echo_warning "文件大小异常 ($size 字节)，可能为错误页面，继续尝试下一个源..."
+                echo_error "再次下载失败！"
+                rm -f steamcmd_linux.tar.gz
+                return 1
             fi
         else
-            echo_warning "从 $url 下载失败（速度过慢或网络错误），自动切换到下一个源..."
+            return 1
         fi
-        rm -f "$output"
-    done
-    echo_error "所有镜像源均失败"
-    return 1
+    fi
 }
 
 # 修复MOD依赖
@@ -223,6 +252,8 @@ Install_dst() {
     create_klei_dirs
     echo_success "饥荒初始文件夹创建完成"
 
+    settingSwap
+    echo_info "设置虚拟内存2GB"
     mkdir -p "$STEAMCMD_DIR"
     cd "$STEAMCMD_DIR" || fail
 
@@ -233,6 +264,20 @@ Install_dst() {
     fi
 
     download_steamcmd || fail "无法下载 steamcmd，请检查网络连接后重试！"
+
+    # 验证文件
+    if [[ ! -f "steamcmd_linux.tar.gz" ]]; then
+        fail "下载的文件不存在，请检查下载过程"
+    fi
+    local file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
+    if [[ "$file_size" -lt 1000000 ]]; then
+        echo_info "下载的文件大小异常 ($file_size 字节)，可能下载了错误页面"
+        rm -f steamcmd_linux.tar.gz
+        fail "下载的文件可能损坏，请重试或手动下载"
+    fi
+
+    echo_success "文件验证通过，开始解压..."
+    tar -xvzf steamcmd_linux.tar.gz
 
     local install_success=false
     local retry_count=0
@@ -524,7 +569,7 @@ RestoreSaves() {
             read -p "确认恢复？(y/n): " confirm
             [[ ! "$confirm" =~ ^[Yy]$ ]] && continue
 
-            [[ -n "$target_dir" && -d "$target_dir/Master/save" ]] && rm -rf "$target_dir/Master/save"/*
+            rm -rf "$target_dir/Master/save"/* "$target_dir/Caves/save"/*
             sleep 3
             mkdir -p "$target_dir"
 
@@ -1173,7 +1218,6 @@ others() {
         echo "6. 切换32位/64位版本 [当前: ${cur_ver}位]"
         echo "7. 强制更新公网IP缓存"
         echo "8. 修改饥荒服务器端口"
-        echo "9. 设置虚拟内存"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
         case $option in
@@ -1220,7 +1264,6 @@ others() {
             6) toggle_version ;;
             7) force_update_public_ip ;;
             8) change_dst_port ;;
-            9) set_swap ;;
             0) break ;;
             *) echo_error "无效选项" ;;
         esac
@@ -1233,7 +1276,7 @@ others() {
 CURRENT_VERSION=$(get_current_version)
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.8 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.7 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
