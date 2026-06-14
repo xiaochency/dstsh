@@ -100,20 +100,6 @@ download() {
     wget -q --show-progress --tries="$tries" --timeout="$timeout" "$url"
 }
 
-download_with_speed_check() {
-    local url="$1"
-    local output="$2"          # 输出文件名，可选
-    local min_speed="${3:-100k}"   # 最低速度，默认 100KB/s
-    local speed_time="${4:-10}"   # 低于最低速度允许的秒数，默认10秒
-
-    local curl_opts="-# -L --connect-timeout 10 --speed-limit $min_speed --speed-time $speed_time"
-    if [[ -n "$output" ]]; then
-        curl $curl_opts -o "$output" "$url"
-    else
-        curl $curl_opts -O "$url"
-    fi
-}
-
 # 创建必要目录（安装时使用）
 create_klei_dirs() {
     local clusters=("Cluster_1" "Cluster_2")
@@ -170,25 +156,44 @@ download_steamcmd() {
         "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
     )
+
     local output="steamcmd_linux.tar.gz"
 
     for url in "${urls[@]}"; do
         echo_info "尝试从 $url 下载（速度低于 100KB/s 持续 10 秒将自动切换）..."
-        if download_with_speed_check "$url" "$output" "100k" 10; then
-            # 验证文件大小
-            local size=$(stat -c%s "$output" 2>/dev/null || echo 0)
+
+        # 使用 curl 下载，设置低速限制：100KB/s，持续 10 秒则放弃
+        curl -L --fail \
+             --connect-timeout 10 \
+             --speed-limit 100000 \
+             --speed-time 10 \
+             -o "$output" \
+             "$url"
+
+        if [[ $? -ne 0 ]]; then
+            echo_warning "警告：从 $url 下载失败（速度过慢或网络错误），自动切换到下一个源..."
+            rm -f "$output"
+            continue
+        fi
+
+        # 验证文件大小（≥1MB）
+        if [[ -s "$output" ]]; then
+            local size
+            size=$(stat -c%s "$output" 2>/dev/null || echo 0)
             if [[ $size -ge 1000000 ]]; then
-                echo_success "下载成功并验证通过，来源：$url"
+                echo_info "下载成功并验证通过，来源：$url"
                 tar -xzf "$output" && rm -f "$output" && return 0
             else
-                echo_warning "文件大小异常 ($size 字节)，可能为错误页面，继续尝试下一个源..."
+                echo_warning "警告：文件大小异常 ($size 字节)，可能为错误页面，继续尝试下一个源..."
             fi
         else
-            echo_warning "从 $url 下载失败（速度过慢或网络错误），自动切换到下一个源..."
+            echo_warning "警告：下载文件为空，继续尝试下一个源..."
         fi
+
         rm -f "$output"
     done
-    echo_error "所有镜像源均失败"
+
+    echo_error "错误：所有镜像源均失败"
     return 1
 }
 
@@ -575,26 +580,28 @@ DeleteSaves() {
 ms_servers() {
     # 确保 ms.sh 存在
     while true; do
-        if [[ -f "$MS_SCRIPT" ]]; then
-            [[ ! -x "$MS_SCRIPT" ]] && chmod +x "$MS_SCRIPT"
+        if [[ -f "$MS_SCRIPT" && -x "$MS_SCRIPT" ]]; then
             break
-        else
-            echo_warning "监控脚本 ms.sh 不存在，正在下载..."
-            if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 5 10; then
-                if [[ -f "$MS_SCRIPT" && -s "$MS_SCRIPT" ]]; then
-                    echo_success "已成功下载监控脚本 ms.sh"
-                    chmod +x "$MS_SCRIPT"
-                    break
-                else
-                    echo_error "下载失败：文件未正确创建或为空"
-                    rm -f "$MS_SCRIPT"
-                fi
-            else
-                echo_error "下载失败，请检查网络"
-            fi
-            read -p "是否重试下载？(y/n): " retry
-            [[ "$retry" != "y" ]] && return 1
         fi
+
+        echo_warning "监控脚本 ms.sh 不存在，正在下载..."
+
+        if curl -fsSL --connect-timeout 5 --max-time 10 \
+            "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" \
+            -o "$MS_SCRIPT"; then
+
+            if head -n 1 "$MS_SCRIPT" | grep -q '^#!/bin/bash'; then
+                chmod +x "$MS_SCRIPT"
+                echo_success "已成功下载监控脚本 ms.sh"
+                break
+            fi
+        fi
+
+        echo_error "下载失败，文件异常"
+        rm -f "$MS_SCRIPT"
+
+        read -r -p "是否重试下载？(y/n): " retry
+        [[ "$retry" != "y" ]] && return 1
     done
 
     while true; do
@@ -1233,7 +1240,7 @@ others() {
 CURRENT_VERSION=$(get_current_version)
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.5.8 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.9 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
