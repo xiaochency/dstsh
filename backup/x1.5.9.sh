@@ -97,24 +97,7 @@ download() {
     local url="$1"
     local tries="$2"
     local timeout="$3"
-
-    # 检查 curl 是否存在，若不存在则使用 apt-get 安装
-    if ! command -v curl &>/dev/null; then
-        echo "curl 未安装，正在安装..."
-        sudo apt-get update && sudo apt-get install -y curl
-    fi
-
-    # 使用 curl 下载，参数说明：
-    # -L              跟随重定向
-    # --progress-bar  显示进度条
-    # --retry         重试次数（默认3次，若未传参）
-    # --connect-timeout 连接超时（默认10秒，若未传参）
-    # -O              保存为远程文件名
-    curl -L --progress-bar \
-         --retry "${tries:-3}" \
-         --connect-timeout "${timeout:-10}" \
-         -O "$url"
-    return $?
+    wget -q --show-progress --tries="$tries" --timeout="$timeout" "$url"
 }
 
 # 创建必要目录（安装时使用）
@@ -166,60 +149,52 @@ set_swap() {
 
 # 下载 steamcmd 并处理镜像源
 download_steamcmd() {
-    local names=(
-        "镜像源(github.dpik.top)"
-        "镜像源(ghfast.top)"
-        "镜像源(cdn.gh-proxy.org)"
-        "镜像源(edgeone.gh-proxy.org)"
-        "Steam官方源"
-    )
     local urls=(
         "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
         "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
     )
 
     local output="steamcmd_linux.tar.gz"
-    local count=${#urls[@]}
 
-    echo "可用的镜像源："
-    for ((i=0; i<count; i++)); do
-        echo "$((i+1))) ${names[i]}"
-        echo "    URL: ${urls[i]}"
+    for url in "${urls[@]}"; do
+        echo_info "尝试从 $url 下载（速度低于 100KB/s 持续 10 秒将自动切换）..."
+
+        # 使用 curl 下载，设置低速限制：100KB/s，持续 10 秒则放弃
+        curl -L --fail \
+             --connect-timeout 10 \
+             --speed-limit 100000 \
+             --speed-time 10 \
+             -o "$output" \
+             "$url"
+
+        if [[ $? -ne 0 ]]; then
+            echo_warning "警告：从 $url 下载失败（速度过慢或网络错误），自动切换到下一个源..."
+            rm -f "$output"
+            continue
+        fi
+
+        # 验证文件大小（≥1MB）
+        if [[ -s "$output" ]]; then
+            local size
+            size=$(stat -c%s "$output" 2>/dev/null || echo 0)
+            if [[ $size -ge 1000000 ]]; then
+                echo_info "下载成功并验证通过，来源：$url"
+                tar -xzf "$output" && rm -f "$output" && return 0
+            else
+                echo_warning "警告：文件大小异常 ($size 字节)，可能为错误页面，继续尝试下一个源..."
+            fi
+        else
+            echo_warning "警告：下载文件为空，继续尝试下一个源..."
+        fi
+
+        rm -f "$output"
     done
-    echo "0) 取消下载"
 
-    read -p "请输入编号 (0-$count): " idx
-    if [[ "$idx" == "0" ]]; then
-        echo_info "用户取消下载"
-        return 1
-    fi
-    if [[ ! "$idx" =~ ^[0-9]+$ ]] || (( idx < 1 || idx > count )); then
-        echo_error "无效选择"
-        return 1
-    fi
-
-    local selected_url="${urls[$((idx-1))]}"
-    local selected_name="${names[$((idx-1))]}"
-    echo_info "使用选择的镜像源: $selected_name"
-    download "$selected_url" 3 10
-    if [[ $? -ne 0 || ! -s "$output" ]]; then
-        echo_error "下载失败"
-        rm -f "$output"
-        return 1
-    fi
-
-    local size=$(stat -c%s "$output" 2>/dev/null || echo 0)
-    if [[ $size -ge 1000000 ]]; then
-        echo_info "下载成功，来源：$selected_name"
-        tar -xzf "$output" && rm -f "$output" && return 0
-    else
-        echo_error "文件大小异常 ($size 字节)，下载失败"
-        rm -f "$output"
-        return 1
-    fi
+    echo_error "错误：所有镜像源均失败"
+    return 1
 }
 
 # 修复MOD依赖
@@ -610,24 +585,20 @@ ms_servers() {
         fi
 
         echo_warning "监控脚本 ms.sh 不存在，正在下载..."
-        # 切换到 HOME 目录，确保 download 将文件保存至正确位置
-        cd "$HOME" || return 1
 
-        # 调用 download 函数，传入 URL、重试次数（3次）和连接超时（5秒）
-        if download "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 3 5; then
-            # 验证下载的文件是否合法
+        if curl -fsSL --connect-timeout 5 --max-time 10 \
+            "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" \
+            -o "$MS_SCRIPT"; then
+
             if head -n 1 "$MS_SCRIPT" | grep -q '^#!/bin/bash'; then
                 chmod +x "$MS_SCRIPT"
                 echo_success "已成功下载监控脚本 ms.sh"
                 break
-            else
-                echo_error "下载文件头部异常，可能非脚本文件"
-                rm -f "$MS_SCRIPT"
             fi
-        else
-            echo_error "下载失败"
-            rm -f "$MS_SCRIPT"
         fi
+
+        echo_error "下载失败，文件异常"
+        rm -f "$MS_SCRIPT"
 
         read -r -p "是否重试下载？(y/n): " retry
         [[ "$retry" != "y" ]] && return 1
@@ -1054,6 +1025,113 @@ change_dst_port() {
 }
 
 # --------------------------------------
+# Steam 加速器管理
+# --------------------------------------
+install_steam302() {
+    local urls=(
+        "https://cdn.gh-proxy.org/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+        "https://ghfast.top/github.com/xiaochency/dstsh/releases/download/1st/Steamcommunity_302.tar.gz"
+    )
+    local names=("镜像源1 (cdn.gh-proxy.org)" "镜像源2 (github.dpik.top)" "镜像源3 (ghfast.top)")
+    echo "开始安装 steam302..."
+    rm -f Steamcommunity_302.tar.gz
+    rm -rf Steamcommunity_302
+    echo "请选择下载镜像源："
+    for i in "${!names[@]}"; do echo_success "$((i+1)). ${names[i]}"; done
+    local choice
+    while true; do
+        read -p "请输入选择 [1-3]: " choice
+        [[ "$choice" =~ ^[1-3]$ ]] && break
+        echo_error "无效选择"
+    done
+    local url="${urls[$((choice-1))]}"
+    echo "使用镜像源：${names[$((choice-1))]}"
+    if download "$url" 3 15; then
+        if [[ -f "Steamcommunity_302.tar.gz" ]]; then
+            local size=$(stat -c%s "Steamcommunity_302.tar.gz" 2>/dev/null || echo "0")
+            if [[ $size -lt 1000 ]]; then
+                echo_error "文件大小异常，删除"
+                rm -f Steamcommunity_302.tar.gz
+                return 1
+            fi
+            if tar -tzf Steamcommunity_302.tar.gz >/dev/null 2>&1; then
+                tar -zxvf Steamcommunity_302.tar.gz
+                echo_success "✅ Steamcommunity_302 安装完成！"
+            else
+                echo_error "压缩包损坏"
+                rm -f Steamcommunity_302.tar.gz
+                return 1
+            fi
+        else
+            echo_error "文件未找到"
+            return 1
+        fi
+    else
+        echo_error "下载失败"
+        return 1
+    fi
+}
+
+start_steam302() {
+    local target_dir="Steamcommunity_302"
+    local executable="./steamcommunity_302.cli"
+    local session="steam302"
+    if [[ ! -d "$target_dir" ]]; then
+        echo_error "目录 $target_dir 不存在，请先安装"
+        return 1
+    fi
+    cd "$target_dir" || return 1
+    chmod +x Steamcommunity_302 steamcommunity_302.caddy steamcommunity_302.cli
+    if screen -list | grep -q "$session"; then
+        echo_warning "已存在会话 $session，是否重启？[y/N]"
+        read -p "" restart
+        [[ "$restart" =~ ^[Yy]$ ]] && screen -S "$session" -X quit || { cd - >/dev/null; return; }
+    fi
+    screen -dmS "$session" "$executable"
+    if [[ $? -eq 0 ]]; then
+        echo_success "✓ Steamcommunity 302 服务已启动 (占用80端口)"
+    else
+        echo_error "启动失败"
+        cd - >/dev/null
+        return 1
+    fi
+    cd - >/dev/null
+}
+
+stop_steam302() {
+    local session="steam302"
+    if screen -list | grep -q "$session"; then
+        screen -S "$session" -X quit
+        echo_success "✓ Steamcommunity 302 服务已停止"
+    else
+        echo_success "服务未在运行"
+    fi
+}
+
+manage_steam302() {
+    while true; do
+        clear
+        echo_success "================================================"
+        echo_success "           Steam加速器管理"
+        echo_success "================================================"
+        echo "1. 安装Steamcommunity 302"
+        echo "2. 启动Steamcommunity 302服务"
+        echo "3. 停止Steamcommunity 302服务"
+        echo "0. 返回上一级"
+        read -p "请输入选择 [0-3]: " choice
+        case $choice in
+            1) install_steam302 ;;
+            2) start_steam302 ;;
+            3) stop_steam302 ;;
+            0) return 0 ;;
+            *) echo_error "无效选择" ;;
+        esac
+        read -p "按回车键继续..."
+    done
+}
+
+# --------------------------------------
 # 查看聊天日志
 # --------------------------------------
 view_chat_log() {
@@ -1086,16 +1164,6 @@ view_chat_log() {
     esac
 }
 
-set_root_password() {
-    echo_info "正在设置 root 密码..."
-    echo "请输入新的 root 密码："
-    passwd root
-    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-    systemctl restart ssh
-    echo_success "远程 root 登录已启用，root 密码已设置。"
-}
-
 # --------------------------------------
 # 其他选项菜单
 # --------------------------------------
@@ -1108,18 +1176,18 @@ others() {
         echo "2. 更新黑名单"
         echo "3. 删除所有MOD"
         echo "4. 删除DST服务器程序"
-        echo "5. 设置虚拟内存"
+        echo "5. steam下载加速"
         echo "6. 切换32位/64位版本 [当前: ${cur_ver}位]"
         echo "7. 强制更新公网IP缓存"
         echo "8. 修改饥荒服务器端口"
-        echo "9. 修改root密码"
+        echo "9. 设置虚拟内存"
         echo "0. 返回主菜单"
         read -p "输入选项: " option
         case $option in
             1)
                 echo_info "正在更新脚本..."
                 [[ -f "x.sh" ]] && mv "x.sh" "x.sh.bak"
-                if download "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh" 5 10; then
+                if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh" 5 10; then
                     chmod 755 x.sh
                     echo_success "脚本更新成功，请重新执行"
                 else
@@ -1130,11 +1198,8 @@ others() {
             2)
                 echo_info "正在更新黑名单..."
                 [[ -f "blocklist.txt" ]] && mv "blocklist.txt" "blocklist.txt.bak"
-                if download "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt" 5 10; then
-                    # 修正：分别复制到两个集群目录
-                    for cluster in "Cluster_1" "Cluster_2"; do
-                        cp -f blocklist.txt "$KLEI_BASE/$cluster/"
-                    done
+                if download "https://ghfast.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt" 5 10; then
+                    cp -f blocklist.txt "$KLEI_BASE/Cluster_1/" "$KLEI_BASE/Cluster_2/"
                     echo_success "黑名单更新成功"
                 else
                     echo_error "更新失败"
@@ -1158,11 +1223,11 @@ others() {
                     echo_warning "取消"
                 fi
                 ;;
-            5) set_swap ;;
+            5) manage_steam302 ;;
             6) toggle_version ;;
             7) force_update_public_ip ;;
             8) change_dst_port ;;
-            9) set_root_password ;;
+            9) set_swap ;;
             0) break ;;
             *) echo_error "无效选项" ;;
         esac
@@ -1175,7 +1240,7 @@ others() {
 CURRENT_VERSION=$(get_current_version)
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.6.0 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.5.9 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"

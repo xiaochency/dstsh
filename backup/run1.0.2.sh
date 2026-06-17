@@ -35,7 +35,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本 v1.0.3        ║"
+    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本               ║"
     echo "   ║                 Don't Starve Together                    ║"
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -162,21 +162,26 @@ check_sqlite3() {
 }
 
 download() {
-    local url="$1"
-    local tries="$2"
-    local timeout="$3"
+    local output="$1"
+    local timeout="$2"
+    shift 2
+    local urls=("$@")
 
-    # 使用 curl 下载，参数说明：
-    # -L              跟随重定向
-    # --progress-bar  显示进度条
-    # --retry         重试次数（默认3次，若未传参）
-    # --connect-timeout 连接超时（默认10秒，若未传参）
-    # -O              保存为远程文件名
-    curl -L --progress-bar \
-         --retry "${tries:-3}" \
-         --connect-timeout "${timeout:-10}" \
-         -O "$url"
-    return $?
+    for url in "${urls[@]}"; do
+        print_info "尝试下载: $url"
+        curl -L --connect-timeout "$timeout" --speed-limit 102400 --speed-time 10 --progress-bar -o "$output" "$url" 2>&1
+        local exit_code=$?
+        if [ $exit_code -eq 0 ] && [ -s "$output" ]; then
+            print_success "下载完成: $output (从 $url)"
+            return 0
+        else
+            [ $exit_code -eq 18 ] || [ $exit_code -eq 28 ] && print_warning "下载速度过慢或超时，切换到下一个镜像源" || print_error "下载失败 (退出码: $exit_code)，切换到下一个镜像源"
+            rm -f "$output"
+        fi
+    done
+
+    print_error "所有镜像源下载均失败"
+    return 1
 }
 
 install_dmp() {
@@ -190,26 +195,8 @@ install_dmp() {
         "https://gh.llkk.cc/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
     )
 
-    echo "请选择下载镜像源："
-    for i in "${!dmp_urls[@]}"; do
-        echo "$((i+1))) ${dmp_urls[$i]}"
-    done
-    echo "0) 输入自定义 URL"
-    read -p "请输入选项 [0-${#dmp_urls[@]}]: " choice
-
-    local selected_url=""
-    if [[ $choice -ge 1 && $choice -le ${#dmp_urls[@]} ]]; then
-        selected_url="${dmp_urls[$((choice-1))]}"
-    elif [[ $choice -eq 0 ]]; then
-        read -p "请输入自定义下载 URL: " selected_url
-    else
-        print_error "无效选项"
-        return 1
-    fi
-
-    print_info "正在从 $selected_url 下载 dmp.tgz..."
-    # 调用 download 函数，重试 10 次，超时 10 秒
-    if download "$selected_url" 10 10; then
+    print_info "正在下载 dmp.tgz..."
+    if download "dmp.tgz" 10 "${dmp_urls[@]}"; then
         if tar -tzf dmp.tgz >/dev/null 2>&1; then
             tar zxvf dmp.tgz >/dev/null
             rm -f dmp.tgz
@@ -294,55 +281,15 @@ set_swap() {
     print_success "系统 swap 设置成功"
 }
 
-enable_auto_start() {
+auto_start_dmp() {
     CRON_JOB="@reboot /bin/bash -c 'source /etc/profile && cd /root && echo 1 | /root/run.sh'"
+
     if crontab -l 2>/dev/null | grep -Fq "$CRON_JOB"; then
-        print_warning "已发现开机自启配置，无需重复添加"
+        print_warning "已发现开机自启配置，请勿重复添加"
     else
         (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
         print_success "已成功设置开机自启"
     fi
-}
-
-disable_auto_start() {
-    CRON_JOB="@reboot /bin/bash -c 'source /etc/profile && cd /root && echo 1 | /root/run.sh'"
-    if crontab -l 2>/dev/null | grep -Fq "$CRON_JOB"; then
-        # 移除包含该任务的行
-        crontab -l 2>/dev/null | grep -vF "$CRON_JOB" | crontab -
-        print_success "已成功关闭开机自启"
-    else
-        print_warning "未发现开机自启配置，无需关闭"
-    fi
-}
-
-auto_start_dmp() {
-    while true; do
-        clear
-        print_header
-        print_section "DMP 开机自启管理"
-        echo -e "${CYAN}  1) 开启 DMP 开机自启${NC}"
-        echo -e "${CYAN}  2) 关闭 DMP 开机自启${NC}"
-        echo -e "${CYAN}  0) 返回主菜单${NC}"
-        print_divider
-        read -p "请选择 [0-2]: " choice
-        case $choice in
-            1)
-                enable_auto_start
-                pause_and_return
-                ;;
-            2)
-                disable_auto_start
-                pause_and_return
-                ;;
-            0)
-                return 0
-                ;;
-            *)
-                print_error "无效选择"
-                sleep 1
-                ;;
-        esac
-    done
 }
 
 list_users() {
@@ -401,53 +348,6 @@ change_password() {
     fi
 }
 
-# 下载 steamcmd
-download_steamcmd() {
-    # 预置镜像列表
-    local steamcmd_urls=(
-        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://gh.927223.xyz/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
-    )
-
-    echo "请选择 steamcmd 下载镜像源："
-    for i in "${!steamcmd_urls[@]}"; do
-        echo "$((i+1))) ${steamcmd_urls[$i]}"
-    done
-    echo "0) 输入自定义 URL"
-    read -p "请输入选项 [0-${#steamcmd_urls[@]}]: " choice
-
-    local selected_url=""
-    if [[ $choice -ge 1 && $choice -le ${#steamcmd_urls[@]} ]]; then
-        selected_url="${steamcmd_urls[$((choice-1))]}"
-    elif [[ $choice -eq 0 ]]; then
-        read -p "请输入自定义下载 URL: " selected_url
-    else
-        print_error "无效选项"
-        return 1
-    fi
-
-    print_info "正在从 $selected_url 下载 steamcmd_linux.tar.gz..."
-    # 调用 download 函数：重试 10 次，超时 10 秒
-    if download "$selected_url" 10 10; then
-        # 检查文件大小（至少 1MB）
-        file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
-        if [ "$file_size" -lt 1000000 ]; then
-            print_warning "下载的文件大小异常 ($file_size 字节)，可能损坏"
-            rm -f steamcmd_linux.tar.gz
-            print_error "下载的文件可能损坏，请重试"
-            return 1
-        fi
-        print_success "steamcmd 下载成功，文件大小验证通过"
-        return 0
-    else
-        print_error "下载 steamcmd 失败"
-        return 1
-    fi
-}
-
 install_dst() {
     read -p "您确定要安装 Don't Starve Together 服务器吗？(y/n): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
@@ -466,19 +366,34 @@ install_dst() {
     mkdir -p "$HOME/steamcmd"
     cd "$HOME/steamcmd" || exit 1
 
-    # ---------- 调用新函数，手动选择镜像下载 ----------
-    if ! download_steamcmd; then
+    local steamcmd_urls=(
+        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://gh.927223.xyz/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
+    )
+
+    print_info "正在下载 steamcmd ..."
+    if ! download "steamcmd_linux.tar.gz" 30 "${steamcmd_urls[@]}"; then
         print_error "=================================================="
-        print_error "✘✘✘ steamcmd 下载失败！"
+        print_error "✘✘✘ 下载失败！"
         print_error "=================================================="
         print_error "无法下载 steamcmd，请检查网络连接后重试！"
+        exit 1
+    fi
+
+    file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
+    if [ "$file_size" -lt 1000000 ]; then
+        print_warning "下载的文件大小异常 ($file_size 字节)，可能损坏"
+        rm -f steamcmd_linux.tar.gz
+        print_error "下载的文件可能损坏，请重试"
         exit 1
     fi
 
     print_success "文件验证通过，开始解压..."
     tar -xvzf steamcmd_linux.tar.gz
 
-    # 以下为原有的 steamcmd 执行、安装验证、依赖修复等，完全不变
     ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
 
     max_retries=3
@@ -673,6 +588,7 @@ while true; do
             ;;
         3)
             auto_start_dmp
+            break
             ;;
         4)
             install_dst
