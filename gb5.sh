@@ -3,7 +3,7 @@
 ##### 自定义常量 ######
 
 # 脚本发布版本
-script_version="v2026-05-15"
+script_version="v2026-07-02"
 
 # geekbench5发布版本
 geekbench_version="5.5.1"
@@ -154,11 +154,35 @@ _check_swap() {
     fi
 }
 
-##### 判断IP类型 #####
+##### 检测IPv4网络（增强版） #####
 _check_ip() {
-    if ! curl -s 'https://browser.geekbench.com' --connect-timeout 5 >/dev/null; then
-        echo -e "对 IPv6 单栈的服务器来说进行测试没有意义，\n因为要将结果上传到 browser.geekbench.com 后才能拿到最后的跑分，\n但 browser.geekbench.com 仅有 IPv4、不支持 IPv6，测了也是白测。"
+    # 1. 检查是否存在非内网 IPv4 地址
+    local ipv4=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | grep -v '^169\.254' | head -1)
+    if [ -z "$ipv4" ]; then
+        echo -e "错误：未检测到有效的 IPv4 地址，本机可能为 IPv6 单栈。"
+        echo -e "由于 Geekbench 结果上传需要 IPv4，测试无法继续。"
         exit 1
+    fi
+    _blue "检测到 IPv4 地址：$ipv4"
+
+    # 2. 使用 4.itdog.cn 验证 IPv4 网络连通性
+    if curl -4 -s --connect-timeout 5 "https://4.itdog.cn" >/dev/null; then
+        _blue "IPv4 网络连通正常（通过 4.itdog.cn 验证）"
+    else
+        echo -e "警告：无法通过 4.itdog.cn 验证 IPv4 连通性，网络可能存在问题。"
+        echo -e "但可尝试继续测试（结果上传可能失败）。"
+        # 询问是否继续
+        echo -e "是否强制继续测试？(y/N)：\c"
+        read -r force_continue
+        if [[ ! "$force_continue" =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+
+    # 3. 尝试访问 Geekbench 浏览器站点（只警告，不退出）
+    if ! curl -4 -s 'https://browser.geekbench.com' --connect-timeout 5 >/dev/null; then
+        echo -e "提示：无法访问 browser.geekbench.com，这可能影响结果上传。"
+        echo -e "若您确定网络可通，可忽略此提示。"
     fi
 }
 
