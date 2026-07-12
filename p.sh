@@ -315,15 +315,18 @@ download_server() {
 # ------------------------- RCON 配置 -------------------------
 RCON_HOST="127.0.0.1"
 RCON_PORT="25575"
-RCON_PASS="123123."   # ← 改成你的
 
 rcon_exec() {
-    local cmd="$1"
-    rcon -a "${RCON_HOST}:${RCON_PORT}" -p "${RCON_PASS}" "$cmd"
+    local pass="$1"
+    shift
+    local cmd="$*"
+    rcon -a "${RCON_HOST}:${RCON_PORT}" -p "$pass" "$cmd"
 }
 
 rcon_menu() {
     ensure_rcon || return 1
+    read -s -p "请输入 RCON 密码: " rcon_pass
+    echo
     while true; do
         clear
         print_title "=== RCON 远程指令 ==="
@@ -350,77 +353,77 @@ rcon_menu() {
         case $rc in
             1)
                 read -p "输入广播内容: " msg
-                rcon_exec "Broadcast $msg"
+                rcon_exec "$rcon_pass" "Broadcast $msg"
                 ;;
             2)
-                rcon_exec "Save"
+                rcon_exec "$rcon_pass" "Save"
                 print_info "世界已保存"
                 ;;
             3)
                 read -p "输入玩家名或 SteamID: " name
                 read -p "输入理由(可选，直接回车跳过): " reason
                 if [[ -n "$reason" ]]; then
-                    rcon_exec "Kick $name $reason"
+                    rcon_exec "$rcon_pass" "Kick $name $reason"
                 else
-                    rcon_exec "Kick $name"
+                    rcon_exec "$rcon_pass" "Kick $name"
                 fi
                 ;;
             4)
                 read -p "关闭倒计时(秒): " t
                 read -p "关闭原因: " reason
-                rcon_exec "Shutdown $t $reason"
+                rcon_exec "$rcon_pass" "Shutdown $t $reason"
                 ;;
             5)
                 print_info "在线玩家列表："
-                rcon_exec "ShowPlayers"
+                rcon_exec "$rcon_pass" "ShowPlayers"
                 ;;
             6)
                 read -p "输入玩家名或 SteamID: " name
                 read -p "输入理由(可选): " reason
                 if [[ -n "$reason" ]]; then
-                    rcon_exec "Ban $name $reason"
+                    rcon_exec "$rcon_pass" "Ban $name $reason"
                 else
-                    rcon_exec "Ban $name"
+                    rcon_exec "$rcon_pass" "Ban $name"
                 fi
                 ;;
             7)
                 read -p "输入要解封的玩家名或 SteamID: " name
-                rcon_exec "Unban $name"
+                rcon_exec "$rcon_pass" "Unban $name"
                 ;;
             8)
                 print_info "封禁列表："
-                rcon_exec "ShowBans"
+                rcon_exec "$rcon_pass" "ShowBans"
                 ;;
             9)
                 read -p "输入玩家名或 SteamID (将传送该玩家到你身边): " player
-                rcon_exec "TeleportToMe $player"
+                rcon_exec "$rcon_pass" "TeleportToMe $player"
                 ;;
             10)
                 read -p "输入你的玩家名或 SteamID: " yourself
                 read -p "输入目标玩家名或 SteamID: " target
-                rcon_exec "TeleportToPlayer $yourself $target"
+                rcon_exec "$rcon_pass" "TeleportToPlayer $yourself $target"
                 ;;
             11)
                 read -p "输入X坐标: " x
                 read -p "输入Y坐标: " y
                 read -p "输入Z坐标: " z
-                rcon_exec "Teleport $x $y $z"
+                rcon_exec "$rcon_pass" "Teleport $x $y $z"
                 ;;
             12)
                 read -p "输入时间(0-24, 如 12 表示中午): " hour
-                rcon_exec "SetTime $hour"
+                rcon_exec "$rcon_pass" "SetTime $hour"
                 ;;
             13)
-                rcon_exec "DoExit"
+                rcon_exec "$rcon_pass" "DoExit"
                 print_warn "服务器即将退出"
                 ;;
             14)
                 print_info "服务器信息"
-                rcon_exec "Info"
+                rcon_exec "$rcon_pass" "Info"
                 ;;
             15)
                 read -p "输入完整 RCON 命令: " custom
-                rcon_exec "$custom"
+                rcon_exec "$rcon_pass" "$custom"
                 ;;
             0)
                 return
