@@ -26,9 +26,11 @@ SERVER_SCRIPT="./PalServer.sh"
 SERVER_ARGS="-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS"
 APP_ID=2394010
 
+# 这些路径将在 detect_run_user 中设置
 STEAMCMD_DIR=""
 STEAMCMD=""
 PAL_DIR=""
+USER_HOME=""
 RUN_USER=""
 
 # ------------------------- 基础检查 -------------------------
@@ -87,8 +89,11 @@ detect_run_user() {
     print_info "服务端目录: $PAL_DIR"
 }
 
+# 仅用于设置已存在文件的权限（启动服务前调用）
 ensure_ownership() {
-    chown -R "$RUN_USER":"$RUN_USER" "$PAL_DIR" 2>/dev/null || true
+    if [[ -d "$PAL_DIR" ]]; then
+        chown -R "$RUN_USER":"$RUN_USER" "$PAL_DIR" 2>/dev/null || true
+    fi
 }
 
 # ------------------------- RCON 自检与安装 -------------------------
@@ -131,7 +136,6 @@ ensure_rcon() {
 
     tar -xzf rcon.tar.gz
 
-    # 直接进入解压出的固定目录
     if [[ -d "rcon-0.10.3-amd64_linux" ]]; then
         cd rcon-0.10.3-amd64_linux || {
             print_error "无法进入目录 rcon-0.10.3-amd64_linux"
@@ -146,7 +150,6 @@ ensure_rcon() {
         return 1
     fi
 
-    # 检查 rcon 文件并赋予执行权限
     if [[ -f "rcon" ]]; then
         chmod +x rcon
         mv rcon /usr/local/bin/rcon
@@ -158,9 +161,8 @@ ensure_rcon() {
         return 1
     fi
 
-    # 回到临时目录根以便清理
     cd - >/dev/null
-    cd - >/dev/null   # 回到原工作目录（因为前一个 cd 进了子目录，需要退两次）
+    cd - >/dev/null
     rm -rf "$TMP_DIR"
 
     if command -v rcon &>/dev/null; then
@@ -185,16 +187,22 @@ install_dependencies() {
     echo "选择 steamcmd 下载源:"
     select url in \
         "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz (官方)" \
-        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz" \
+        "https://ghproxy.com/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz" \
+        "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
     do
         DOWNLOAD_URL="${url%% *}"
         break
     done
 
-    sudo -u "$RUN_USER" mkdir -p "$STEAMCMD_DIR"
+    # 创建目录并设置权限（root操作）
+    mkdir -p "$STEAMCMD_DIR"
     wget -q --show-progress "$DOWNLOAD_URL" -O /tmp/steamcmd.tar.gz
-    sudo -u "$RUN_USER" tar -xzf /tmp/steamcmd.tar.gz -C "$STEAMCMD_DIR"
+    tar -xzf /tmp/steamcmd.tar.gz -C "$STEAMCMD_DIR"
     rm -f /tmp/steamcmd.tar.gz
+    
+    # 设置目录所有权为运行用户
+    chown -R "$RUN_USER":"$RUN_USER" "$STEAMCMD_DIR"
 }
 
 generate_systemd_service() {
@@ -241,6 +249,9 @@ start_server() {
         return
     fi
 
+    # 确保文件权限正确（切换到运行用户）
+    ensure_ownership
+    
     systemctl start "$SERVICE_NAME"
     sleep 2
 
@@ -273,18 +284,6 @@ status_server() {
     fi
 }
 
-update_server() {
-    print_title ">>> 更新服务器"
-    systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-    sudo -u "$RUN_USER" "$STEAMCMD" \
-        +force_install_dir "$PAL_DIR" \
-        +login anonymous \
-        +app_update "$APP_ID" validate \
-        +quit
-    ensure_ownership
-    print_info "✅ 更新完成"
-}
-
 view_log() {
     print_title ">>> 实时查看 Palworld 完整日志（Ctrl+C 退出）"
     if ! systemctl is-active --quiet "$SERVICE_NAME"; then
@@ -293,23 +292,47 @@ view_log() {
     journalctl -u "$SERVICE_NAME" -f
 }
 
-download_server() {
-    print_title ">>> 下载服务端"
-    install_dependencies
-    sudo -u "$RUN_USER" "$STEAMCMD" \
+run_steamcmd_as_root() {
+    print_step "使用 root 执行 steamcmd（HOME=/home/${RUN_USER}）"
+
+    # 确保 .steam 目录存在
+    mkdir -p "${USER_HOME}/.steam"
+
+    # 关键：临时切换 HOME
+    HOME="${USER_HOME}" "$STEAMCMD" \
         +force_install_dir "$PAL_DIR" \
         +login anonymous \
         +app_update "$APP_ID" validate \
         +quit
+}
+
+download_server() {
+    print_title ">>> 下载服务端"
+    install_dependencies
+    mkdir -p "$PAL_DIR"
+
+    run_steamcmd_as_root
+
     chmod +x "${PAL_DIR}/${SERVER_SCRIPT}"
     ensure_ownership
     generate_systemd_service
-    print_info "✅ 下载完成，可使用选项 1 启动"
-    # steamclient.so
+
+    # 修复 steamclient.so
     mkdir -p "${USER_HOME}/.steam/sdk64"
     cp "${STEAMCMD_DIR}/linux64/steamclient.so" "${USER_HOME}/.steam/sdk64/"
-    chown -R "$RUN_USER":"$RUN_USER" "${USER_HOME}/.steam"
-    print_info "✅ 已修复steamclient.so"
+    ensure_ownership
+
+    print_info "✅ 下载完成，可使用选项 1 启动"
+}
+
+update_server() {
+    print_title ">>> 更新服务器"
+    systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+
+    run_steamcmd_as_root
+
+    ensure_ownership
+    print_info "✅ 更新完成"
 }
 
 # ------------------------- RCON 配置 -------------------------
@@ -401,7 +424,7 @@ rcon_menu() {
             10)
                 read -p "输入你的玩家名或 SteamID: " yourself
                 read -p "输入目标玩家名或 SteamID: " target
-                rcon_exec "$rcon_pass" "TeleportToPlayer $yourself $target"
+                ron_exec "$rcon_pass" "TeleportToPlayer $yourself $target"
                 ;;
             11)
                 read -p "输入X坐标: " x
@@ -440,7 +463,7 @@ rcon_menu() {
 show_menu() {
     clear
     echo "===================================="
-    print_title "Palworld 服务端管理1.0.2"
+    print_title "Palworld 服务端管理1.0.3"
     echo "===================================="
     echo "1) 启动服务器"
     echo "2) 更新服务器"
