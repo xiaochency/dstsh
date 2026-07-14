@@ -5,10 +5,9 @@
 ###########################################
 
 # --------------- ↓可修改↓ --------------- #
-PORT=""  # 改为空值，将在启动时询问
+PORT=80
 CONFIG_DIR="./data"
 LEVEL="info"
-PORT_FILE="${CONFIG_DIR}/dmp_port.env"  # 新增：端口配置文件
 # --------------- ↑可修改↑ --------------- #
 
 ###########################################
@@ -36,7 +35,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本 v1.0.4        ║"
+    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本 v1.0.3        ║"
     echo "   ║                 Don't Starve Together                    ║"
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -184,11 +183,11 @@ install_dmp() {
     check_curl
 
     local dmp_urls=(
-        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://ghfast.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
+        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
+        "https://gh.llkk.cc/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.4/dmp.tgz"
     )
 
     echo "请选择下载镜像源："
@@ -236,43 +235,11 @@ check_dmp() {
     fi
 }
 
-# 新增：加载端口配置
-load_port_config() {
-    if [[ -f "$PORT_FILE" ]]; then
-        PORT=$(cat "$PORT_FILE")
-        print_info "已从配置文件加载端口: $PORT"
-    fi
-}
-
-# 新增：保存端口配置
-save_port_config() {
-    mkdir -p "$CONFIG_DIR"
-    echo "$PORT" > "$PORT_FILE"
-    print_success "端口已保存到配置文件: $PORT_FILE"
-}
-
-# 修改：start_dmp函数，添加端口输入逻辑
 start_dmp() {
-    # 首先尝试加载已保存的端口配置
-    load_port_config
-    
-    # 如果PORT为空，则提示用户输入
-    while [[ -z "$PORT" ]]; do
-        read -p "请输入已开放的TCP端口 [默认: 80]: " input_port
-        PORT=${input_port:-80}
-        
-        # 验证端口是否为数字且在有效范围内
-        if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
-            print_error "端口必须是1-65535之间的数字"
-            PORT=""
-        fi
-    done
-    
-    # 检查端口是否被占用
     port=$(ss -ltnp | awk -v port=${PORT} '$4 ~ ":"port"$" {print $4}')
     if [ -n "$port" ]; then
         print_error "端口 $PORT 已被占用: $port"
-        echo "请修改端口后重新运行"
+        echo "请修改 run.sh 中的 PORT 变量后重新运行"
         exit 1
     fi
 
@@ -284,9 +251,6 @@ start_dmp() {
         install_dmp
         nohup "$ExeFile" -bind ${PORT} -dbpath ${CONFIG_DIR} -level ${LEVEL} >/dev/null 2>&1 &
     fi
-    
-    # 保存端口配置
-    save_port_config
 }
 
 stop_dmp() {
@@ -437,52 +401,6 @@ change_password() {
     fi
 }
 
-# 新增：修改端口函数
-change_port() {
-    print_header
-    print_section "修改 DMP 服务端口"
-    
-    # 显示当前端口
-    load_port_config
-    if [[ -n "$PORT" ]]; then
-        print_info "当前端口: $PORT"
-    else
-        print_warning "当前未设置端口"
-    fi
-    
-    # 获取新端口
-    while true; do
-        read -p "请输入新的TCP端口 [1-65535，默认: 80]: " new_port
-        new_port=${new_port:-80}
-        
-        # 验证端口是否为数字且在有效范围内
-        if ! [[ "$new_port" =~ ^[0-9]+$ ]] || (( new_port < 1 || new_port > 65535 )); then
-            print_error "端口必须是1-65535之间的数字"
-            continue
-        fi
-        
-        # 检查端口是否被占用
-        port_check=$(ss -ltnp | awk -v port=${new_port} '$4 ~ ":"port"$" {print $4}')
-        if [ -n "$port_check" ]; then
-            print_warning "端口 $new_port 已被占用: $port_check"
-            read -p "是否仍要使用此端口？(y/n): " force_use
-            if [[ "$force_use" != "y" && "$force_use" != "Y" ]]; then
-                continue
-            fi
-        fi
-        
-        break
-    done
-    
-    # 更新端口
-    PORT=$new_port
-    save_port_config
-    
-    print_success "端口已修改为: $PORT"
-    print_warning "修改后需要重启 DMP 服务才能生效！"
-    pause_and_return
-}
-
 # 下载 steamcmd
 download_steamcmd() {
     # 预置镜像列表
@@ -561,7 +479,7 @@ install_dst() {
     tar -xvzf steamcmd_linux.tar.gz
 
     # 以下为原有的 steamcmd 执行、安装验证、依赖修复等，完全不变
-    ./steamcmd.sh +force_install_dir "$install_dir" +login anonymous +app_update 343050 validate +quit
+    ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
 
     max_retries=3
     retry_count=0
@@ -578,7 +496,7 @@ install_dst() {
         if [ $retry_count -lt $max_retries ]; then
             print_warning "服务器安装验证失败，正在尝试重新安装 ($((retry_count+1))/$max_retries)..."
             cd "$HOME/steamcmd" || break
-            ./steamcmd.sh +force_install_dir "$install_dir" +login anonymous +app_update 343050 validate +quit
+            ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
             retry_count=$((retry_count+1))
             sleep 2
         fi
@@ -604,7 +522,7 @@ install_dst() {
 update_dst() {
     print_info "正在更新 Don't Starve Together 服务器..."
     cd "$steamcmd_dir" || exit 1
-    ./steamcmd.sh +force_install_dir "$install_dir" +login anonymous +app_update 343050 validate +quit
+    ./steamcmd.sh +login anonymous +force_install_dir "$install_dir" +app_update 343050 validate +quit
     print_success "服务器更新完成，请重新执行脚本"
     cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
     cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
@@ -717,14 +635,12 @@ show_main_menu() {
     echo -e "${GREEN}  [7]${NC}  修改 root 密码并开启远程登录"
     echo -e "${GREEN}  [8]${NC}  禁用 Ubuntu 自动更新"
     echo -e "${GREEN}  [9]${NC}  查看 DMP 所有用户名"
-    print_divider
     echo -e "${GREEN}  [10]${NC} 修改 DMP 用户密码"
     echo -e "${GREEN}  [11]${NC} 设置虚拟内存 (Swap)"
-    echo -e "${GREEN}  [12]${NC} 修改 DMP 服务端口"
     print_divider
     echo -e "${RED}  [q/Q]${NC} 退出脚本"
     print_divider
-    echo -n -e "${CYAN}请输入选项 [0-12/q]: ${NC}"
+    echo -n -e "${CYAN}请输入选项 [0-11/q]: ${NC}"
 }
 
 # ==================== 主程序入口 ====================
@@ -791,9 +707,6 @@ while true; do
         11)
             set_swap
             break
-            ;;
-        12)
-            change_port
             ;;
         q|Q)
             echo -e "${GREEN}感谢使用，再见！${NC}"
