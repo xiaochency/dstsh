@@ -221,7 +221,7 @@ Group=${RUN_USER}
 WorkingDirectory=${PAL_DIR}
 ExecStart=${PAL_DIR}/${SERVER_SCRIPT} ${SERVER_ARGS}
 Restart=always
-RestartSec=10
+RestartSec=120
 LimitNOFILE=100000
 Environment="LD_LIBRARY_PATH=${STEAMCMD_DIR}/linux64:${USER_HOME}/.steam/sdk64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
