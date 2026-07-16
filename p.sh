@@ -335,6 +335,60 @@ update_server() {
     print_info "✅ 更新完成"
 }
 
+# ------------------------- 定时重启管理 -------------------------
+schedule_restart() {
+    print_title ">>> 定时重启管理"
+    
+    # 定义cron任务标识（用于唯一识别我们的任务）
+    CRON_COMMENT="# Palworld Auto-Restart"
+    CRON_CMD="/bin/systemctl restart ${SERVICE_NAME}"
+    
+    # 获取当前crontab内容（排除我们自己的任务）
+    current_cron=$(crontab -l 2>/dev/null | grep -v "${CRON_COMMENT}")
+    
+    while true; do
+        clear
+        print_title "=== 定时重启设置 ==="
+        echo "1) 每天06:00重启服务器"
+        echo "2) 每天22:00重启服务器"
+        echo "3) 移除重启任务"
+        echo "0) 返回主菜单"
+        echo "======================"
+        echo -n "请选择: "
+        read -r rc
+        
+        case $rc in
+            1)
+                # 每天6点重启
+                new_cron="${current_cron}\n0 6 * * * ${CRON_CMD} ${CRON_COMMENT}"
+                echo -e "${new_cron}" | crontab -
+                print_info "✅ 已设置每天06:00自动重启"
+                read -p "按回车继续..."
+                ;;
+            2)
+                # 每天22点重启
+                new_cron="${current_cron}\n0 22 * * * ${CRON_CMD} ${CRON_COMMENT}"
+                echo -e "${new_cron}" | crontab -
+                print_info "✅ 已设置每天22:00自动重启"
+                read -p "按回车继续..."
+                ;;
+            3)
+                # 移除重启任务
+                echo -e "${current_cron}" | crontab -
+                print_info "✅ 已移除定时重启任务"
+                read -p "按回车继续..."
+                ;;
+            0)
+                return
+                ;;
+            *)
+                print_error "无效选项"
+                read -p "按回车继续..."
+                ;;
+        esac
+    done
+}
+
 # ------------------------- RCON 配置 -------------------------
 RCON_HOST="127.0.0.1"
 RCON_PORT="25575"
@@ -463,7 +517,7 @@ rcon_menu() {
 show_menu() {
     clear
     echo "===================================="
-    print_title "Palworld 服务端管理1.0.3"
+    print_title "Palworld 服务端管理1.0.4"
     echo "===================================="
     echo "1) 启动服务器"
     echo "2) 更新服务器"
@@ -472,6 +526,7 @@ show_menu() {
     echo "5) 查看服务器日志"
     echo "6) RCON 远程指令"
     echo "7) 下载服务端"
+    echo "8) 定时重启"
     echo "0) 退出"
     echo "===================================="
     echo -n "请选择: "
@@ -492,6 +547,7 @@ main() {
             5) view_log ;;
             6) rcon_menu ;;
             7) download_server ;;
+            8) schedule_restart ;;
             0) exit 0 ;;
             *) print_error "无效选项" ;;
         esac
