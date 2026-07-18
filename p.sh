@@ -22,6 +22,7 @@ print_step()  { echo -e "${COLOR_CYAN}==>${COLOR_RESET} $1"; }
 # ------------------------- 配置变量 -------------------------
 SERVICE_NAME="palworld.service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+USER_CONFIG_FILE="/etc/palworld_user"
 SERVER_SCRIPT="./PalServer.sh"
 SERVER_ARGS="-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS"
 APP_ID=2394010
@@ -31,7 +32,7 @@ STEAMCMD_DIR=""
 STEAMCMD=""
 PAL_DIR=""
 USER_HOME=""
-RUN_USER="steam"
+RUN_USER=""
 
 # ------------------------- 基础检查 -------------------------
 check_root() {
@@ -42,14 +43,60 @@ check_root() {
 }
 
 detect_run_user() {
-    if ! id "$RUN_USER" &>/dev/null; then
-        useradd -m -s /bin/bash "$RUN_USER"
-        print_info "创建用户 steam"
+    # 如果 RUN_USER 已非空（第二次调用），直接使用
+    if [[ -n "$RUN_USER" ]]; then
+        USER_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
+        STEAMCMD_DIR="${USER_HOME}/steamcmd"
+        STEAMCMD="${STEAMCMD_DIR}/steamcmd.sh"
+        PAL_DIR="${USER_HOME}/Steam/steamapps/common/PalServer"
+        print_info "运行用户: $RUN_USER"
+        print_info "服务端目录: $PAL_DIR"
+        return
     fi
+
+    # 尝试从配置文件读取用户名
+    if [[ -f "$USER_CONFIG_FILE" ]] && [[ -s "$USER_CONFIG_FILE" ]]; then
+        RUN_USER=$(cat "$USER_CONFIG_FILE" | tr -d '\n\r')
+        print_info "从配置文件读取用户: $RUN_USER"
+    else
+        # 配置文件不存在或为空 → 交互询问
+        echo -e "${COLOR_CYAN}请输入运行 Palworld 服务端的系统用户名（该用户将被创建，若已存在则直接使用）：${COLOR_RESET}"
+        read -p "用户名 [默认: steam]: " input_user
+        if [[ -z "$input_user" ]]; then
+            RUN_USER="steam"
+        else
+            RUN_USER="$input_user"
+        fi
+        # 将用户名写入配置文件（覆盖）
+        echo "$RUN_USER" > "$USER_CONFIG_FILE"
+        print_info "用户名已保存至 $USER_CONFIG_FILE"
+    fi
+
+    # 检查用户是否存在，不存在则创建
+    if ! id "$RUN_USER" &>/dev/null; then
+        print_info "用户 $RUN_USER 不存在，正在创建..."
+        useradd -m -s /bin/bash "$RUN_USER"
+        if [[ $? -ne 0 ]]; then
+            print_error "创建用户 $RUN_USER 失败，请检查权限或手动创建"
+            exit 1
+        fi
+        print_info "用户 $RUN_USER 创建成功"
+    else
+        print_info "用户 $RUN_USER 已存在"
+    fi
+
+    # 获取用户家目录
     USER_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
+    if [[ -z "$USER_HOME" ]]; then
+        print_error "无法获取用户 $RUN_USER 的家目录"
+        exit 1
+    fi
+
+    # 设置相关路径
     STEAMCMD_DIR="${USER_HOME}/steamcmd"
     STEAMCMD="${STEAMCMD_DIR}/steamcmd.sh"
     PAL_DIR="${USER_HOME}/Steam/steamapps/common/PalServer"
+
     print_info "运行用户: $RUN_USER"
     print_info "服务端目录: $PAL_DIR"
 }
