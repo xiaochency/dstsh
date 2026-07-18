@@ -31,7 +31,7 @@ STEAMCMD_DIR=""
 STEAMCMD=""
 PAL_DIR=""
 USER_HOME=""
-RUN_USER=""
+RUN_USER="steam"
 
 # ------------------------- 基础检查 -------------------------
 check_root() {
@@ -42,58 +42,26 @@ check_root() {
 }
 
 detect_run_user() {
-    CONFIG_FILE="/etc/palworld.conf"
-
-    # 1. 尝试从配置文件读取
-    if [[ -f "$CONFIG_FILE" ]]; then
-        source "$CONFIG_FILE" 2>/dev/null
-        if [[ -n "$RUN_USER" ]]; then
-            USER_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
-            if [[ -z "$USER_HOME" ]]; then
-                print_error "配置文件中用户 $RUN_USER 不存在，请删除 $CONFIG_FILE 重新配置"
-                exit 1
-            fi
-            STEAMCMD_DIR="${USER_HOME}/steamcmd"
-            STEAMCMD="${STEAMCMD_DIR}/steamcmd.sh"
-            PAL_DIR="${USER_HOME}/PalServer"
-            print_info "从配置文件读取运行用户: $RUN_USER"
-            return
-        fi
+    if ! id "$RUN_USER" &>/dev/null; then
+        useradd -m -s /bin/bash "$RUN_USER"
+        print_info "创建用户 steam"
     fi
-
-    # 2. 不存在配置文件或读取失败，执行首次检测
-    if [[ -n "$SUDO_USER" && "$SUDO_USER" != "root" ]]; then
-        RUN_USER="$SUDO_USER"
-    elif [[ "$USER" != "root" ]]; then
-        RUN_USER="$USER"
-    else
-        read -p "请输入用于运行 Palworld 的普通用户（直接回车使用 steam）: " RUN_USER
-        if [[ -z "$RUN_USER" ]]; then
-            RUN_USER="steam"
-        fi
-        if ! id "$RUN_USER" &>/dev/null; then
-            useradd -m -s /bin/bash "$RUN_USER"
-        fi
-    fi
-
-    # 3. 写入配置文件（供后续使用）
-    echo "RUN_USER=$RUN_USER" > "$CONFIG_FILE"
-    chmod 644 "$CONFIG_FILE"
-
     USER_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
     STEAMCMD_DIR="${USER_HOME}/steamcmd"
     STEAMCMD="${STEAMCMD_DIR}/steamcmd.sh"
-    PAL_DIR="${USER_HOME}/PalServer"
-
+    PAL_DIR="${USER_HOME}/Steam/steamapps/common/PalServer"
     print_info "运行用户: $RUN_USER"
     print_info "服务端目录: $PAL_DIR"
 }
 
-# 仅用于设置已存在文件的权限（启动服务前调用）
+# 设置所有相关目录的属主为 steam
 ensure_ownership() {
-    if [[ -d "$PAL_DIR" ]]; then
-        chown -R "$RUN_USER":"$RUN_USER" "$PAL_DIR" 2>/dev/null || true
-    fi
+    local dirs=("$PAL_DIR" "$STEAMCMD_DIR" "${USER_HOME}/.steam" "${USER_HOME}/Steam")
+    for d in "${dirs[@]}"; do
+        if [[ -d "$d" ]]; then
+            chown -R "$RUN_USER":"$RUN_USER" "$d" 2>/dev/null || true
+        fi
+    done
 }
 
 # ------------------------- RCON 自检与安装 -------------------------
@@ -195,13 +163,12 @@ install_dependencies() {
         break
     done
 
-    # 创建目录并设置权限（root操作）
     mkdir -p "$STEAMCMD_DIR"
     wget -q --show-progress "$DOWNLOAD_URL" -O /tmp/steamcmd.tar.gz
     tar -xzf /tmp/steamcmd.tar.gz -C "$STEAMCMD_DIR"
     rm -f /tmp/steamcmd.tar.gz
-    
-    # 设置目录所有权为运行用户
+
+    # 关键：将 steamcmd 目录属主改为 steam
     chown -R "$RUN_USER":"$RUN_USER" "$STEAMCMD_DIR"
 }
 
@@ -249,9 +216,7 @@ start_server() {
         return
     fi
 
-    # 确保文件权限正确（切换到运行用户）
     ensure_ownership
-    
     systemctl start "$SERVICE_NAME"
     sleep 2
 
@@ -292,35 +257,53 @@ view_log() {
     journalctl -u "$SERVICE_NAME" -f
 }
 
-run_steamcmd_as_root() {
-    print_step "使用 root 执行 steamcmd（HOME=/home/${RUN_USER}）"
+# 以 steam 用户身份执行 steamcmd（真正切换用户）
+run_steamcmd_as_user() {
+    print_step "以 $RUN_USER 用户执行 steamcmd"
 
-    # 确保 .steam 目录存在
-    mkdir -p "${USER_HOME}/.steam"
+    # 执行下载/更新，若失败则重试最多3次
+    local max_retries=3
+    local retry_count=0
+    local success=0
+    while [[ $retry_count -lt $max_retries ]]; do
+        ((retry_count++))
+        print_info "尝试第 ${retry_count} 次下载/更新..."
+        su - "$RUN_USER" -c "HOME=\"${USER_HOME}\" \"${STEAMCMD}\" +login anonymous +app_update $APP_ID validate +quit"
+        if [[ $? -eq 0 ]]; then
+            success=1
+            break
+        else
+            print_warn "命令执行失败，等待5秒后重试..."
+            sleep 5
+        fi
+    done
 
-    # 关键：临时切换 HOME
-    HOME="${USER_HOME}" "$STEAMCMD" \
-        +force_install_dir "$PAL_DIR" \
-        +login anonymous \
-        +app_update "$APP_ID" validate \
-        +quit
+    if [[ $success -eq 0 ]]; then
+        print_error "多次尝试后仍然失败，请检查网络或手动排查。"
+        return 1
+    fi
+    return 0
 }
 
 download_server() {
     print_title ">>> 下载服务端"
     install_dependencies
-    mkdir -p "$PAL_DIR"
 
-    run_steamcmd_as_root
+    run_steamcmd_as_user
+    if [[ $? -ne 0 ]]; then
+        print_error "下载失败，请检查后重试"
+        return 1
+    fi
 
-    chmod +x "${PAL_DIR}/${SERVER_SCRIPT}"
     ensure_ownership
     generate_systemd_service
 
-    # 修复 steamclient.so
+    # 修复 steamclient.so（由steam用户创建，无需额外复制，但若缺失则复制）
     mkdir -p "${USER_HOME}/.steam/sdk64"
-    cp "${STEAMCMD_DIR}/linux64/steamclient.so" "${USER_HOME}/.steam/sdk64/"
-    ensure_ownership
+    if [[ -f "${STEAMCMD_DIR}/linux64/steamclient.so" ]]; then
+        cp "${STEAMCMD_DIR}/linux64/steamclient.so" "${USER_HOME}/.steam/sdk64/"
+        chown -R "$RUN_USER":"$RUN_USER" "${USER_HOME}/.steam"
+    fi
 
     print_info "✅ 下载完成，可使用选项 1 启动"
 }
@@ -329,7 +312,11 @@ update_server() {
     print_title ">>> 更新服务器"
     systemctl stop "$SERVICE_NAME" 2>/dev/null || true
 
-    run_steamcmd_as_root
+    run_steamcmd_as_user
+    if [[ $? -ne 0 ]]; then
+        print_error "更新失败"
+        return 1
+    fi
 
     ensure_ownership
     print_info "✅ 更新完成"
@@ -337,13 +324,11 @@ update_server() {
 
 # ------------------------- 定时重启管理 -------------------------
 schedule_restart() {
-    print_title ">>> 定时重启管理"
+    print_title ">>> 定时重启Pal服务端"
     
-    # 定义cron任务标识（用于唯一识别我们的任务）
     CRON_COMMENT="# Palworld Auto-Restart"
     CRON_CMD="/bin/systemctl restart ${SERVICE_NAME}"
     
-    # 获取当前crontab内容（排除我们自己的任务）
     current_cron=$(crontab -l 2>/dev/null | grep -v "${CRON_COMMENT}")
     
     while true; do
@@ -359,21 +344,18 @@ schedule_restart() {
         
         case $rc in
             1)
-                # 每天6点重启
                 new_cron="${current_cron}\n0 6 * * * ${CRON_CMD} ${CRON_COMMENT}"
                 echo -e "${new_cron}" | crontab -
                 print_info "✅ 已设置每天06:00自动重启"
                 read -p "按回车继续..."
                 ;;
             2)
-                # 每天22点重启
                 new_cron="${current_cron}\n0 22 * * * ${CRON_CMD} ${CRON_COMMENT}"
                 echo -e "${new_cron}" | crontab -
                 print_info "✅ 已设置每天22:00自动重启"
                 read -p "按回车继续..."
                 ;;
             3)
-                # 移除重启任务
                 echo -e "${current_cron}" | crontab -
                 print_info "✅ 已移除定时重启任务"
                 read -p "按回车继续..."
@@ -387,6 +369,61 @@ schedule_restart() {
                 ;;
         esac
     done
+}
+
+set_swap() {
+    SWAPFILE=/swap.img
+    SWAPSIZE=4G
+
+    if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
+        print_info "检测到已有 swap 设备 (/dev/dm-1) 或 swap 文件 ($SWAPFILE)，跳过创建步骤"
+    else
+        print_info "未检测到 swap 设备或文件，正在创建 swap 文件..."
+        sudo fallocate -l $SWAPSIZE $SWAPFILE
+        sudo chmod 600 $SWAPFILE
+        sudo mkswap $SWAPFILE
+        sudo swapon $SWAPFILE
+        print_info "交换文件创建并启用成功"
+
+        if ! grep -q "$SWAPFILE" /etc/fstab; then
+            print_info "将交换文件添加到 /etc/fstab"
+            echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+            print_info "交换文件已添加到开机启动"
+        else
+            print_info "交换文件已在 /etc/fstab 中，跳过添加步骤"
+        fi
+    fi
+
+    sysctl -w vm.swappiness=20
+    sysctl -w vm.min_free_kbytes=100000
+    echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' >/etc/sysctl.d/dmp_swap.conf
+
+    print_info "系统 swap 设置成功"
+}
+
+disable_ubuntu_autoupdate() {
+    print_info "正在禁用 Ubuntu 自动更新..."
+    systemctl stop unattended-upgrades
+    systemctl disable unattended-upgrades
+    systemctl stop apt-daily.timer
+    systemctl disable apt-daily.timer
+    systemctl stop apt-daily-upgrade.timer
+    systemctl disable apt-daily-upgrade.timer
+
+    AUTO_UPGRADE_FILE="/etc/apt/apt.conf.d/20auto-upgrades"
+    if [ -f "$AUTO_UPGRADE_FILE" ]; then
+        cp "$AUTO_UPGRADE_FILE" "$AUTO_UPGRADE_FILE.bak"
+        if grep -q 'APT::Periodic::Update-Package-Lists "1";' "$AUTO_UPGRADE_FILE"; then
+            sed -i 's/APT::Periodic::Update-Package-Lists "1";/APT::Periodic::Update-Package-Lists "0";/' "$AUTO_UPGRADE_FILE"
+        fi
+        if grep -q 'APT::Periodic::Unattended-Upgrade "1";' "$AUTO_UPGRADE_FILE"; then
+            sed -i 's/APT::Periodic::Unattended-Upgrade "1";/APT::Periodic::Unattended-Upgrade "0";/' "$AUTO_UPGRADE_FILE"
+        fi
+    else
+        echo 'APT::Periodic::Update-Package-Lists "0";' > "$AUTO_UPGRADE_FILE"
+        echo 'APT::Periodic::Unattended-Upgrade "0";' >> "$AUTO_UPGRADE_FILE"
+    fi
+    print_info "Ubuntu 自动更新已禁用。"
 }
 
 # ------------------------- RCON 配置 -------------------------
@@ -478,7 +515,7 @@ rcon_menu() {
             10)
                 read -p "输入你的玩家名或 SteamID: " yourself
                 read -p "输入目标玩家名或 SteamID: " target
-                ron_exec "$rcon_pass" "TeleportToPlayer $yourself $target"
+                rcon_exec "$rcon_pass" "TeleportToPlayer $yourself $target"
                 ;;
             11)
                 read -p "输入X坐标: " x
@@ -517,7 +554,7 @@ rcon_menu() {
 show_menu() {
     clear
     echo "===================================="
-    print_title "Palworld 服务端管理1.0.4"
+    print_title "Palworld 服务端管理1.0.5"
     echo "===================================="
     echo "1) 启动服务器"
     echo "2) 更新服务器"
@@ -526,7 +563,9 @@ show_menu() {
     echo "5) 查看服务器日志"
     echo "6) RCON 远程指令"
     echo "7) 下载服务端"
-    echo "8) 定时重启"
+    echo "8) 设定定时重启"
+    echo "9) 开启虚拟内存"
+    echo "10) 禁用ubuntu自动更新"
     echo "0) 退出"
     echo "===================================="
     echo -n "请选择: "
@@ -548,6 +587,8 @@ main() {
             6) rcon_menu ;;
             7) download_server ;;
             8) schedule_restart ;;
+            9) set_swap ;;
+            10) disable_ubuntu_autoupdate ;;
             0) exit 0 ;;
             *) print_error "无效选项" ;;
         esac
