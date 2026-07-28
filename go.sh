@@ -204,43 +204,13 @@ download_and_extract() {
 
 # -------------------- 依赖安装 --------------------
 install_dst_dependencies() {
-    local SUDO
-    SUDO=$(get_sudo) || return 1
-
     print_info "检查并安装 DST 运行依赖..."
 
-    # 启用 i386 架构（DST 服务端必需）
-    if ! dpkg --print-foreign-architectures | grep -qx i386; then
-        print_info "启用 i386 架构..."
-        if ! $SUDO dpkg --add-architecture i386; then
-            print_error "启用 i386 架构失败"
-            return 1
-        fi
-    else
-        print_success "i386 架构已启用，跳过"
-    fi
-
-    # 刷新软件源
-    print_info "刷新软件源..."
-    if ! $SUDO apt-get update; then
-        print_error "apt update 失败，请检查网络或软件源配置"
-        return 1
-    fi
-
-    # 批量安装依赖包
-    print_info "安装依赖包..."
-    if ! $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        ca-certificates \
-        curl \
-        procps \
-        screen \
-        unzip \
-        lib32gcc-s1 \
-        libcurl4-gnutls-dev:i386 \
-        libcurl4-gnutls-dev; then
-        print_error "依赖安装失败"
-        return 1
-    fi
+    dpkg --add-architecture i386
+    apt-get update
+    apt-get install -y screen unzip lib32gcc-s1 a-certificates curl procps
+    apt-get install -y libcurl4-gnutls-dev:i386
+    apt-get install -y libcurl4-gnutls-dev
 
     print_success "所有依赖安装完成"
 }
@@ -619,9 +589,6 @@ install_dst() {
         print_warning "安装已取消."
         return
     fi
-
-    # 安装依赖
-    install_dst_dependencies || return 1
 
     mkdir -p "$STEAMCMD_DIR"
     cd "$STEAMCMD_DIR" || exit 1

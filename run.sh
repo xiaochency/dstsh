@@ -184,11 +184,11 @@ install_dmp() {
     check_curl
 
     local dmp_urls=(
-        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
-        "https://ghfast.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.5/dmp.tgz"
+        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
+        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
+        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
+        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
+        "https://ghfast.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
     )
 
     echo "请选择下载镜像源："
