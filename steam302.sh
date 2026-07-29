@@ -29,23 +29,13 @@ echo_green()  { echo -e "\033[32m$1\033[0m"; }
 echo_yellow() { echo -e "\033[33m$1\033[0m"; }
 echo_cyan()   { echo -e "\033[36m$1\033[0m"; }
 
-# ============ 下载函数 ============
-download() {
-    local url="$1"
-    local retries="${2:-3}"
-    local timeout="${3:-20}"
-    local output="$4"
-    
-    for ((i=1; i<=retries; i++)); do
-        echo_cyan "尝试下载 (第 $i/$retries 次)..."
-        if command -v curl &> /dev/null; then
-            curl -L --connect-timeout "$timeout" --max-time 180 -o "$output" "$url" 2>/dev/null && return 0
-        elif command -v wget &> /dev/null; then
-            wget --timeout="$timeout" -O "$output" "$url" 2>/dev/null && return 0
-        fi
-        sleep 2
-    done
-    return 1
+# ============ 下载依赖 ============
+check_axel() {
+    echo_cyan "检查 axel 命令..."
+    if ! command -v axel >/dev/null 2>&1; then
+        apt update
+        apt install -y axel
+    fi
 }
 
 # ============ 镜像源选择 ============
@@ -78,8 +68,10 @@ install_steam302() {
         echo_red "错误：安装需要root权限，请使用 sudo 运行"
         return 1
     fi
+
+    check_axel
     
-    echo_cyan "--- 步骤1/4: 选择下载镜像源 ---"
+    echo_cyan "--- 步骤1/3: 选择下载镜像源 ---"
     if ! select_mirror; then
         echo_yellow "安装已取消。"
         return 1
@@ -90,44 +82,27 @@ install_steam302() {
     local download_url="${SELECTED_MIRROR_URL}/https://github.com${GITHUB_RELEASE_PATH}"
     local temp_file="/tmp/Steamcommunity_302.tar.gz"
     
-    echo_cyan "--- 步骤2/4: 下载文件 ---"
+    echo_cyan "--- 步骤2/3: 下载文件 ---"
     echo_cyan "下载地址: $download_url"
     
     rm -f "$temp_file"
-    if ! download "$download_url" 3 20 "$temp_file"; then
+    # 改为直接使用 axel，10线程下载
+    if ! axel -n 10 -o "$temp_file" "$download_url"; then
         echo_red "❌ 下载失败，请尝试其他镜像源"
         return 1
     fi
     
     echo_green "✅ 下载完成"
     
-    echo_cyan "--- 步骤3/4: 验证文件 ---"
-    local file_size
-    file_size=$(stat -c%s "$temp_file" 2>/dev/null || stat -f%z "$temp_file" 2>/dev/null || echo "0")
-    
-    if [ "$file_size" -lt 1000000 ]; then
-        echo_red "❌ 文件大小异常 ($file_size bytes)，下载可能不完整"
-        rm -f "$temp_file"
-        return 1
-    fi
-    
-    if ! tar -tzf "$temp_file" >/dev/null 2>&1; then
-        echo_red "❌ 压缩文件损坏"
-        rm -f "$temp_file"
-        return 1
-    fi
-    
-    echo_green "✅ 文件验证通过"
-    
-    echo_cyan "--- 步骤4/4: 安装到 $INSTALL_DIR ---"
+    echo_cyan "--- 步骤3/3: 安装到 $INSTALL_DIR ---"
     
     mkdir -p "$INSTALL_DIR"
     rm -rf "${INSTALL_DIR:?}"/*
     
     if ! tar -zxvf "$temp_file" -C "$INSTALL_DIR" --strip-components=1; then
-    echo_red "❌ 解压失败"
-    rm -f "$temp_file"
-    return 1
+        echo_red "❌ 解压失败"
+        rm -f "$temp_file"
+        return 1
     fi
     
     rm -f "$temp_file"
@@ -172,13 +147,8 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable "$SERVICE_NAME"
     
-    echo_green "✅ systemd服务已创建并设置为开机自启"
-    echo_cyan "  启动: systemctl start steam302"
-    echo_cyan "  停止: systemctl stop steam302"
-    echo_cyan "  状态: systemctl status steam302"
-    echo_cyan "  日志: journalctl -u steam302 -f"
+    echo_green "✅ systemd服务已创建"
 }
 
 # ============ 启动函数 ============
@@ -264,6 +234,61 @@ view_logs() {
     esac
 }
 
+# ============ 开机自启管理 ============
+manage_autostart() {
+    echo_cyan "=== Steamcommunity 302 开机自启管理 ==="
+    
+    if [ ! -f "$SERVICE_FILE" ]; then
+        echo_red "❌ systemd服务不存在，请先安装"
+        return 1
+    fi
+    
+    # 获取当前启用状态
+    local enabled_status
+    if systemctl is-enabled "$SERVICE_NAME" &>/dev/null; then
+        enabled_status="已启用"
+    else
+        enabled_status="已禁用"
+    fi
+    echo_cyan "当前开机自启状态: $enabled_status"
+    echo ""
+    
+    echo_cyan "请选择操作："
+    echo_cyan "  1. 开启开机自启"
+    echo_cyan "  2. 禁用开机自启"
+    echo_cyan "  0. 返回"
+    
+    while true; do
+        read -p "请输入选择 [0-2]: " choice
+        case "$choice" in
+            1)
+                systemctl enable "$SERVICE_NAME"
+                if systemctl is-enabled "$SERVICE_NAME" &>/dev/null; then
+                    echo_green "✅ 开机自启已开启"
+                else
+                    echo_red "❌ 开启失败"
+                fi
+                break
+                ;;
+            2)
+                systemctl disable "$SERVICE_NAME"
+                if ! systemctl is-enabled "$SERVICE_NAME" &>/dev/null; then
+                    echo_green "✅ 开机自启已禁用"
+                else
+                    echo_red "❌ 禁用失败"
+                fi
+                break
+                ;;
+            0)
+                return 0
+                ;;
+            *)
+                echo_red "无效选择，请输入 0-2"
+                ;;
+        esac
+    done
+}
+
 # ============ 主菜单 ============
 main_menu() {
     while true; do
@@ -281,21 +306,21 @@ main_menu() {
         fi
         
         echo_green "================================================"
-        echo_cyan "  1. 安装 Steamcommunity 302"
-        echo_cyan "  2. 启动服务"
-        echo_cyan "  3. 停止服务"
-        echo_cyan "  4. 查看日志"
-        echo_cyan "  0. 退出"
+        echo_cyan "  0. 安装 Steamcommunity 302"
+        echo_cyan "  1. 启动服务"
+        echo_cyan "  2. 停止服务"
+        echo_cyan "  3. 查看日志"
+        echo_cyan "  4. 开机自启管理"
         echo_green "================================================"
         
         read -p "请输入选择 [0-4]: " choice
         
         case "$choice" in
-            1) install_steam302 ;;
-            2) start_steam302 ;;
-            3) stop_steam302 ;;
-            4) view_logs ;;
-            0) echo_green "再见！"; exit 0 ;;
+            0) install_steam302 ;;
+            1) start_steam302 ;;
+            2) stop_steam302 ;;
+            3) view_logs ;;
+            4) manage_autostart ;;
             *) echo_red "无效选择，请输入 0-4 之间的数字" ;;
         esac
         

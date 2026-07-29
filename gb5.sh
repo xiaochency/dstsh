@@ -1,9 +1,7 @@
 #!/bin/bash
 
-##### 自定义常量 ######
-
 # 脚本发布版本
-script_version="v2026-07-02"
+script_version="v2026-07-29"
 
 # geekbench5发布版本
 geekbench_version="5.5.1"
@@ -16,20 +14,20 @@ dir="./gb5-github-i-abc"
 
 ##### 配色 #####
 
-_red() {
+red() {
     echo -e "\033[0;31;31m$1\033[0m"
 }
 
-_yellow() {
+yellow() {
     echo -e "\033[0;31;33m$1\033[0m"
 }
 
-_blue() {
+blue() {
     echo -e "\033[0;31;36m$1\033[0m"
 }
 
 ##### 横幅 #####
-_banner() {
+banner() {
     echo -e "# ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## #"
     echo -e "#            专用于服务器的GB5测试             #"
     echo -e "#                 $script_version                  #"
@@ -38,15 +36,15 @@ _banner() {
 }
 
 ##### 检测locale配置并覆盖为C语言环境 #####
-_check_locale() {
+check_locale() {
     if locale -a 2>/dev/null | grep -q "^C$"; then
         export LC_ALL=C
     fi
 }
 
 ##### 检测某软件包是否安装，没安则自动安上，目前只支持RedHat、Debian系 #####
-_check_package() {
-    _yellow "正在检测所需的$1是否安装"
+check_package() {
+    yellow "正在检测所需的$1是否安装"
     # 检测软件包是否安装
     if ! command -v $1; then
         # 确认包管理器并安装软件包
@@ -57,105 +55,27 @@ _check_package() {
         elif command -v apt; then
             sudo apt -y install $2
         else
-            _blue "本机非RedHat、Debian系，暂不支持自动安装所需的软件包"
+            blue "本机非RedHat、Debian系，暂不支持自动安装所需的软件包"
             exit
         fi
         # 再次检测软件包是否安装
         if ! command -v $1; then
-            _red "自动安装所需的$1失败"
+            red "自动安装所需的$1失败"
             echo "请手动安装$1后再执行本脚本"
             exit
         fi
     fi
 }
 
-##### 创建目录 #####
-_make_dir() {
-    # 不再强制删除整个目录，而是检查是否存在
+##### 创建目录
+make_dir() {
     if [ ! -d "$dir" ]; then
         mkdir -p $dir
-    else
-        # 如果存在，只清理旧的 swap 和 result 文件，保留 tar 包和解压后的文件夹
-        sudo swapoff $dir/swap &>/dev/null
-        rm -f $dir/swap $dir/result.txt $dir/result.html
-    fi
-}
-
-##### 检测内存，增加Swap #####
-_check_swap() {
-    # 检测内存
-    mem=$(free -m | awk '/Mem/{print $2}')
-    old_swap=$(free -m | awk '/Swap/{print $2}')
-    old_ms=$((mem + old_swap))
-    _blue "本机内存：${mem}Mi"
-    _blue "本机Swap：${old_swap}Mi"
-    _blue "内存加Swap总计：${old_ms}Mi\n"
-
-    # 判断内存是否小于1G、或内存+Swap是否小于1.25G，若都小于则加Swap
-    if [ "$mem" -ge "1024" ]; then
-        _yellow "经判断，本机内存大于1G，满足GB5测试条件\n"
-    elif [ "$old_ms" -ge "1280" ]; then
-        _yellow "经判断，本机内存加Swap总计大于1.25G，满足GB5测试条件\n"
-    else
-        echo "经判断，本机内存小于1G，且内存加Swap总计小于1.25G，不满足GB5测试条件，有如下解决方案："
-        echo "1. 添加Swap (该操作脚本自动完成，且在GB5测试结束后会把本机恢复原样)"
-        echo -e "2. 退出测试\n"
-        _yellow "请输入您的选择 (序号)：\c"
-        read -r choice_1
-        echo -e "\033[0m"
-        case "$choice_1" in
-        2)
-            exit
-            ;;
-        # 添加Swap
-        1)
-            _yellow "添加Swap任务开始，完成时间取决于硬盘速度，请耐心等候\n"
-            need_swap=$((1300 - old_ms))
-            # fallocate -l "$need_swap"M $dir/swap
-            # fallocate在RHEL6、7上创建swap失败，见https://access.redhat.com/solutions/4570081
-            sudo dd if=/dev/zero of=$dir/swap bs=1M count=$need_swap
-            sudo chmod 0600 $dir/swap
-            sudo mkswap $dir/swap
-            sudo swapon $dir/swap
-
-            # 再次判断内存+Swap是否小于1.25G
-            new_swap=$(free -m | awk '/Swap/{print $2}')
-            new_ms=$((mem + new_swap))
-            if [ "$new_ms" -ge "1280" ]; then
-                echo
-                _blue "经判断，现在内存加Swap总计${new_ms}Mi，满足GB5测试条件\n"
-            else
-                echo
-                echo "很抱歉，由于未知原因，Swap未能成功新增，现在内存加Swap总计${new_ms}Mi，仍不满足GB5测试条件，有如下备选方案："
-                echo "1. 强制执行GB5测试"
-                echo -e "2. 退出测试\n"
-                _yellow "请输入您的选择 (序号)：\c"
-                read -r choice_2
-                echo -e "\033[0m"
-                case "$choice_2" in
-                2)
-                    exit
-                    ;;
-                1)
-                    echo
-                    ;;
-                *)
-                    _red "输入错误，请重新执行脚本"
-                    exit
-                    ;;
-                esac
-            fi
-            ;;
-        *)
-            _red "输入错误，请重新执行脚本"
-            exit
-            ;;
-        esac
     fi
 }
 
 ##### 检测IPv4网络（增强版） #####
-_check_ip() {
+check_ip() {
     # 1. 检查是否存在非内网 IPv4 地址
     local ipv4=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | grep -v '^169\.254' | head -1)
     if [ -z "$ipv4" ]; then
@@ -163,11 +83,11 @@ _check_ip() {
         echo -e "由于 Geekbench 结果上传需要 IPv4，测试无法继续。"
         exit 1
     fi
-    _blue "检测到 IPv4 地址：$ipv4"
+    blue "检测到 IPv4 地址：$ipv4"
 
     # 2. 使用 4.itdog.cn 验证 IPv4 网络连通性
     if curl -4 -s --connect-timeout 5 "https://4.itdog.cn" >/dev/null; then
-        _blue "IPv4 网络连通正常（通过 4.itdog.cn 验证）"
+        blue "IPv4 网络连通正常（通过 4.itdog.cn 验证）"
     else
         echo -e "警告：无法通过 4.itdog.cn 验证 IPv4 连通性，网络可能存在问题。"
         echo -e "但可尝试继续测试（结果上传可能失败）。"
@@ -187,70 +107,60 @@ _check_ip() {
 }
 
 ##### 判断IP所在地，选择相应下载源 #####
-_check_region() {
+check_region() {
     echo "请选择一个下载源："
     echo "  1) ghfast.top 镜像源"
     echo "  2) github.dpik.top 镜像源"
-    echo "  3) cdn.gh-proxy.org 镜像源"   # 新增选项 3
-    echo "  4) edgeone.gh-proxy.org 镜像源" # 新增选项 4
+    echo "  3) cdn.gh-proxy.org 镜像源"
+    echo "  4) edgeone.gh-proxy.org 镜像源"
     echo -e "\n请输入选项编号 (1-4)：\c"
     read -r source_choice
     echo -e "\033[0m"
 
     case "$source_choice" in
         1)
-            _blue "已选择源 1: ghfast.top"
+            blue "已选择源 1: ghfast.top"
             geekbench_tar_url="https://ghfast.top/github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
             ;;
         2)
-            _blue "已选择源 2: github.dpik.top"
+            blue "已选择源 2: github.dpik.top"
             geekbench_tar_url="https://github.dpik.top/github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
             ;;
-        # 新增源 3 的逻辑
         3)
-            _blue "已选择源 3: cdn.gh-proxy.org"
+            blue "已选择源 3: cdn.gh-proxy.org"
             geekbench_tar_url="https://cdn.gh-proxy.org/https://github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
             ;;
-        # 新增源 4 的逻辑
         4)
-            _blue "已选择源 4: edgeone.gh-proxy.org"
+            blue "已选择源 4: edgeone.gh-proxy.org"
             geekbench_tar_url="https://edgeone.gh-proxy.org/https://github.com/xiaochency/dstsh/releases/download/2nd/Geekbench-5.5.1-Linux.tar.gz"
             ;;
         *)
-            _red "输入错误！请输入 1 到 4 之间的数字。"
+            red "输入错误！请输入 1 到 4 之间的数字。"
             exit 1
             ;;
     esac
 }
 
 ##### 下载Geekbench tar包 ######
-_download_geekbench() {
-    # 检查文件是否已存在且不为空
-    if [ -s "$dir/${geekbench_tar_name}" ]; then
-        _yellow "检测到 $geekbench_tar_name 已存在于目录中，跳过下载。"
-        return 0
-    fi
-
-    _yellow "测试软件下载中"
-    wget --show-progress -O "$dir/${geekbench_tar_name}" "$geekbench_tar_url"
+download_geekbench() {
+    yellow "测试软件下载中"
+    axel -n 10 -o "$dir/${geekbench_tar_name}" "$geekbench_tar_url"
 }
 
 ##### 解tar包 #####
-_unzip_tar() {
+unzip_tar() {
     tar -xf $dir/${geekbench_tar_name} -C ./$dir
 }
 
 ##### 运行测试 #####
-_run_test() {
-    _yellow "测试中\n"
+run_test() {
+    yellow "测试中\n"
 
     # 计时开始
     run_start_time=$(date +"%s")
 
-    # $dir/${geekbench_tar_folder}/${geekbench_software_name} |  tee $dir/result.txt |  awk '/System Information/,/Uploading results to the Geekbench Browser/ {if ($0 ~ /Uploading results to the Geekbench Browser/) exit; print}'
-    # 由于未知原因，在Debian上逐行滚动失效，故awk换为perl
-    $dir/${geekbench_tar_folder}/${geekbench_software_name} | tee $dir/result.txt | perl -ne 'if (/System Information/../Uploading results to the Geekbench Browser/) {if (/Uploading results to the Geekbench Browser/) {exit;} print;}'
-
+    $dir/${geekbench_tar_folder}/${geekbench_software_name} | tee $dir/result.txt
+    
     # 计时结束
     run_end_time=$(date +"%s")
 
@@ -260,96 +170,134 @@ _run_test() {
     run_time_seconds=$((run_time % 60))
 }
 
-##### 下载含测试结果的html ######
-_download_result_html() {
-    result_html_url=$(grep -E "https.*cpu/[0-9]*$" $dir/result.txt)
-
-    if wget -4 --spider $result_html_url 2>/dev/null; then
-        wget -4 -O $dir/result.html $result_html_url 2>/dev/null
-    else
-        wget --no-check-certificate -4 -O $dir/result.html $result_html_url 2>/dev/null
-    fi
-}
-
-##### 输出结果 (含时间、参数、分数、链接) #####
-_output_summary() {
-    # 时间
+##### 输出结果 (含时间、参数、链接) #####
+output_summary() {
     echo "当前时间：$(date +"%Y-%m-%d %H:%M:%S %Z")"
     echo -e "净测试时长：$run_time_minutes分$run_time_seconds秒\n"
 
-    # 参数
-    _yellow "Geekbench 5 测试结果\n"
+    yellow "Geekbench 5 测试结果\n"
     awk '/System Information/,/Size/{sub("System Information", "系统信息"); sub("Processor Information", "处理器信息"); sub("Memory Information", "内存信息"); print}' $dir/result.txt
 
-    # 分数
     echo
-    awk -F'>' '/<div class='"'"'score'"'"'>/{print $2}' $dir/result.html |
-        awk -F'<' '{if (NR==1) {print "单核测试分数："$1} else {print "多核测试分数："$1}}'
-
-    # 链接
+    # ---------- 链接输出 ----------
     awk '/https.*cpu\/[0-9]*$/{print "详细结果链接：" $1}' $dir/result.txt
-    cpu=$(awk -F 'with an? | processor' '/Benchmark results for/{gsub(/ /,"%20",$2); print $2}' $dir/result.html)
-    echo "可供参考链接：https://browser.geekbench.com/search?k=v5_cpu&q=$cpu"
-
+    cpu=$(awk -F 'with an? | processor' '/Benchmark results for/{gsub(/ /,"%20",$2); print $2}' $dir/result.html 2>/dev/null)
+    if [ -n "$cpu" ]; then
+        echo "可供参考链接：https://browser.geekbench.com/search?k=v5_cpu&q=$cpu"
+    fi
     echo
     awk '/https.*key=[0-9]*$/{print "个人保存链接：" $1}' $dir/result.txt
 }
 
-##### 删除残余文件 #####
-_rm_dir() {
-    sudo swapoff $dir/swap &>/dev/null
-    rm -rf $dir
-    unset LC_ALL
-    echo -e "\033[0m"
-}
-
-##### main #####
-_main() {
-    # trap '_rm_dir' EXIT
-    clear
-    _banner
-    _check_locale
-    _check_ip
-    _check_package wget wget
-    _check_package tar tar
-    # _check_package fallocate util-linux
-    _check_package perl perl
-    clear
-    _banner
-    _make_dir
-    _check_swap
-    clear
-    _banner
-
-    # --- 核心修改：将文件检查提前 ---
-    # 检查工作目录中是否已存在压缩包
-    if [ -s "$dir/${geekbench_tar_name}" ]; then
-        _yellow "检测到 $dir/${geekbench_tar_name} 已存在，跳过下载源选择和下载步骤。"
-        # 文件存在，直接跳过 _check_region 和 _download_geekbench
-    else
-        # 文件不存在，需要选择下载源并下载
-        _check_region
-        _download_geekbench
+##### 查看已保存的结果 #####
+view_saved_result() {
+    if [ ! -f "$dir/result.txt" ]; then
+        red "未找到测试结果文件，请先运行测试（选项1）。"
+        return 1
     fi
 
-    # 检查压缩包是否存在且大小不为0（作为安全措施）
-    if [ ! -f "$dir/${geekbench_tar_name}" ] || [ ! -s "$dir/${geekbench_tar_name}" ]; then
-        _red "错误：Geekbench 压缩包不存在或为空。"
-        exit 1
+    echo "当前时间：$(date +"%Y-%m-%d %H:%M:%S %Z")"
+    echo -e "（显示上次保存的测试结果）\n"
+
+    yellow "Geekbench 5 测试结果\n"
+    awk '/System Information/,/Size/{sub("System Information", "系统信息"); sub("Processor Information", "处理器信息"); sub("Memory Information", "内存信息"); print}' $dir/result.txt
+    echo
+
+    # 链接输出
+    awk '/https.*cpu\/[0-9]*$/{print "详细结果链接：" $1}' $dir/result.txt
+    cpu=$(awk -F 'with an? | processor' '/Benchmark results for/{gsub(/ /,"%20",$2); print $2}' $dir/result.html 2>/dev/null)
+    if [ -n "$cpu" ]; then
+        echo "可供参考链接：https://browser.geekbench.com/search?k=v5_cpu&q=$cpu"
     fi
-    _yellow "Geekbench 压缩包准备完成。\n"
     echo
-    
-    # 后续的解压和测试流程不变
-    _unzip_tar
-    clear
-    _banner
-    _run_test
-    _download_result_html
-    clear
-    echo
-    _banner
-    _output_summary
+    awk '/https.*key=[0-9]*$/{print "个人保存链接：" $1}' $dir/result.txt
 }
 
-_main
+##### 安装 GB5（下载并解压） #####
+install_gb5() {
+    clear
+    banner
+
+    # 检查工作目录是否存在，若存在则删除
+    if [ -d "$dir" ]; then
+        yellow "检测到已存在的测试目录，将删除并重新安装。"
+        rm -rf $dir
+        blue "已删除旧目录。"
+    fi
+
+    check_locale
+    check_ip
+    check_package axel axel
+    check_package curl curl
+    check_package tar tar
+    check_package perl perl
+    make_dir
+
+    # 下载压缩包
+    check_region
+    download_geekbench
+
+    # 解压（目录为空，必然需要解压）
+    unzip_tar
+    blue "解压完成。"
+
+    echo
+    blue "GB5 安装完成。"
+    echo
+    read -n 1 -s -r -p "按任意键返回主菜单..."
+}
+
+##### 运行 GB5 测试 #####
+run_gb5_test() {
+    clear
+    banner
+    check_locale
+    check_package curl curl   # 测试时也需要curl下载结果页
+    check_package perl perl
+    make_dir
+
+    # 检查可执行文件是否存在
+    if [ ! -x "$dir/${geekbench_tar_folder}/${geekbench_software_name}" ]; then
+        red "错误：未找到 Geekbench 可执行文件，请先执行安装（选项0）。"
+        read -n 1 -s -r -p "按任意键返回主菜单..."
+        return 1
+    fi
+
+    clear
+    banner
+    run_test
+    clear
+    echo
+    banner
+    output_summary
+    echo
+    read -n 1 -s -r -p "按任意键返回主菜单..."
+}
+
+##### 主菜单 #####
+main() {
+    while true; do
+        clear
+        banner
+        echo "主菜单"
+        echo "  0) 安装 GB5（下载并解压）"
+        echo "  1) 执行 GB5 测试"
+        echo "  2) 查看上一次测试结果"
+        echo "  3) 退出"
+        echo
+        yellow "请输入选项编号 (0-3)：\c"
+        read -r choice
+        echo -e "\033[0m"
+
+        case "$choice" in
+            0) install_gb5 ;;
+            1) run_gb5_test ;;
+            2) view_saved_result ; echo ; read -n 1 -s -r -p "按任意键返回主菜单..." ;;
+            3) echo "退出脚本。" ; exit 0 ;;
+            *) red "无效输入，请输入 0-3 之间的数字。" ; sleep 1 ;;
+        esac
+    done
+}
+
+# 启动主菜单
+main
