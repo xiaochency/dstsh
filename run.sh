@@ -36,7 +36,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本 v1.0.4        ║"
+    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本 v1.0.5        ║"
     echo "   ║                 Don't Starve Together                    ║"
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -78,31 +78,18 @@ echo_green() { echo -e "${GREEN}$*${NC}"; }
 echo_yellow() { echo -e "${YELLOW}$*${NC}"; }
 echo_cyan() { echo -e "${CYAN}$*${NC}"; }
 
-check_curl() {
-    print_info "检查 curl 命令..."
-    if ! curl --version >/dev/null 2>&1; then
-        OS=$(grep -P "^ID=" /etc/os-release | awk -F'=' '{print($2)}' | sed "s/['\"]//g")
-        if [[ ${OS} == "ubuntu" ]]; then
-            apt install -y curl
-        else
-            if grep -P "^ID_LIKE=" /etc/os-release | awk -F'=' '{print($2)}' | sed "s/['\"]//g" | grep rhel; then
-                yum install -y curl
-            fi
-        fi
+check_axel() {
+    print_info "检查 axel 命令..."
+    if ! command -v axel >/dev/null 2>&1; then
+        apt update
+        apt install -y axel
     fi
 }
 
 check_strings() {
     print_info "检查 strings 命令..."
     if ! strings --version >/dev/null 2>&1; then
-        OS=$(grep -P "^ID=" /etc/os-release | awk -F'=' '{print($2)}' | sed "s/['\"]//g")
-        if [[ ${OS} == "ubuntu" ]]; then
-            apt install -y binutils
-        else
-            if grep -P "^ID_LIKE=" /etc/os-release | awk -F'=' '{print($2)}' | sed "s/['\"]//g" | grep rhel; then
-                yum install -y binutils
-            fi
-        fi
+        apt install -y binutils
     fi
 }
 
@@ -112,7 +99,6 @@ check_glibc() {
     OS=$(grep -P "^ID=" /etc/os-release | awk -F'=' '{print($2)}' | sed "s/['\"]//g")
     if [[ ${OS} == "ubuntu" ]]; then
         if ! strings /lib/x86_64-linux-gnu/libc.so.6 | grep GLIBC_2.34 >/dev/null 2>&1; then
-            apt update
             apt install -y libc6
         fi
     else
@@ -121,67 +107,14 @@ check_glibc() {
 }
 
 check_sqlite3() {
-    if ! command -v sqlite3 &> /dev/null; then
-        print_warning "检测到未安装 sqlite3，正在安装..."
-        OS=$(grep -P "^ID=" /etc/os-release | awk -F'=' '{print($2)}' | sed "s/['\"]//g")
-        case $OS in
-            ubuntu|debian)
-                if apt-get update && apt-get install -y sqlite3; then
-                    print_success "sqlite3 安装成功"
-                else
-                    print_error "sqlite3 安装失败，请手动安装"
-                    return 1
-                fi
-                ;;
-            centos|rhel|fedora|rocky|alma)
-                if yum install -y sqlite3; then
-                    print_success "sqlite3 安装成功"
-                else
-                    print_error "sqlite3 安装失败，请手动安装"
-                    return 1
-                fi
-                ;;
-            alpine)
-                if apk add sqlite; then
-                    print_success "sqlite3 安装成功"
-                else
-                    print_error "sqlite3 安装失败，请手动安装"
-                    return 1
-                fi
-                ;;
-            *)
-                print_error "不支持的操作系统: $OS，请手动安装 sqlite3"
-                print_warning "安装命令参考:"
-                echo "  Ubuntu/Debian: sudo apt-get install sqlite3"
-                echo "  CentOS/RHEL: sudo yum install sqlite3"
-                echo "  Alpine: sudo apk add sqlite"
-                return 1
-                ;;
-        esac
+    print_info "检查 sqlite3 命令..."
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        apt install -y sqlite3
     fi
-    return 0
-}
-
-download() {
-    local url="$1"
-    local tries="$2"
-    local timeout="$3"
-
-    # 使用 curl 下载，参数说明：
-    # -L              跟随重定向
-    # --progress-bar  显示进度条
-    # --retry         重试次数（默认3次，若未传参）
-    # --connect-timeout 连接超时（默认10秒，若未传参）
-    # -O              保存为远程文件名
-    curl -L --progress-bar \
-         --retry "${tries:-3}" \
-         --connect-timeout "${timeout:-10}" \
-         -O "$url"
-    return $?
 }
 
 install_dmp() {
-    check_curl
+    check_axel
 
     local dmp_urls=(
         "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
@@ -209,8 +142,10 @@ install_dmp() {
     fi
 
     print_info "正在从 $selected_url 下载 dmp.tgz..."
-    # 调用 download 函数，重试 10 次，超时 10 秒
-    if download "$selected_url" 10 10; then
+
+    # 直接使用 axel 下载，10 个线程，输出文件名为 dmp.tgz
+    axel -n 10 -o dmp.tgz "$selected_url"
+    if [ $? -eq 0 ] && [ -f dmp.tgz ]; then
         if tar -tzf dmp.tgz >/dev/null 2>&1; then
             tar zxvf dmp.tgz >/dev/null
             rm -f dmp.tgz
@@ -218,6 +153,7 @@ install_dmp() {
             print_success "安装 dmp 成功"
         else
             print_error "压缩包损坏"
+            rm -f dmp.tgz
             return 1
         fi
     else
@@ -485,6 +421,8 @@ change_port() {
 
 # 下载 steamcmd
 download_steamcmd() {
+    check_axel
+
     # 预置镜像列表
     local steamcmd_urls=(
         "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
@@ -512,17 +450,10 @@ download_steamcmd() {
     fi
 
     print_info "正在从 $selected_url 下载 steamcmd_linux.tar.gz..."
-    # 调用 download 函数：重试 10 次，超时 10 秒
-    if download "$selected_url" 10 10; then
-        # 检查文件大小（至少 1MB）
-        file_size=$(stat -c%s "steamcmd_linux.tar.gz" 2>/dev/null || stat -f%z "steamcmd_linux.tar.gz" 2>/dev/null || echo "0")
-        if [ "$file_size" -lt 1000000 ]; then
-            print_warning "下载的文件大小异常 ($file_size 字节)，可能损坏"
-            rm -f steamcmd_linux.tar.gz
-            print_error "下载的文件可能损坏，请重试"
-            return 1
-        fi
-        print_success "steamcmd 下载成功，文件大小验证通过"
+    # 使用 axel 10 线程下载
+    axel -n 10 -o steamcmd_linux.tar.gz "$selected_url"
+    if [ $? -eq 0 ] && [ -f steamcmd_linux.tar.gz ]; then
+        print_success "steamcmd 下载成功"
         return 0
     else
         print_error "下载 steamcmd 失败"
@@ -535,6 +466,33 @@ install_dst() {
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         print_warning "安装已取消."
         return
+    fi
+
+    # 检查已有目录
+    local paths_to_check=("$HOME/steamcmd" "$HOME/Steam" "$install_dir")
+    local exist_paths=()
+    for p in "${paths_to_check[@]}"; do
+        if [ -d "$p" ]; then
+            exist_paths+=("$p")
+        fi
+    done
+
+    if [ ${#exist_paths[@]} -gt 0 ]; then
+        print_warning "检测到以下目录已存在："
+        for p in "${exist_paths[@]}"; do
+            echo "  - $p"
+        done
+        read -p "是否删除这些目录并重新安装？(y/n): " confirm_delete
+        if [[ "$confirm_delete" == "y" || "$confirm_delete" == "Y" ]]; then
+            for p in "${exist_paths[@]}"; do
+                print_info "删除 $p ..."
+                rm -rf "$p"
+            done
+            print_success "已删除旧目录"
+        else
+            print_warning "保留现有目录，继续安装可能会覆盖文件。"
+            # 不退出，继续安装
+        fi
     fi
 
     print_info "正在安装 Don't Starve Together 服务器..."
