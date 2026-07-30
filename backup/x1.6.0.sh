@@ -93,6 +93,30 @@ toggle_version() {
 # --------------------------------------
 check_for_file() { [[ -e "$1" ]]; }
 
+download() {
+    local url="$1"
+    local tries="$2"
+    local timeout="$3"
+
+    # 检查 curl 是否存在，若不存在则使用 apt-get 安装
+    if ! command -v curl &>/dev/null; then
+        echo "curl 未安装，正在安装..."
+        sudo apt-get update && sudo apt-get install -y curl
+    fi
+
+    # 使用 curl 下载，参数说明：
+    # -L              跟随重定向
+    # --progress-bar  显示进度条
+    # --retry         重试次数（默认3次，若未传参）
+    # --connect-timeout 连接超时（默认10秒，若未传参）
+    # -O              保存为远程文件名
+    curl -L --progress-bar \
+         --retry "${tries:-3}" \
+         --connect-timeout "${timeout:-10}" \
+         -O "$url"
+    return $?
+}
+
 # 创建必要目录（安装时使用）
 create_klei_dirs() {
     local clusters=("Cluster_1" "Cluster_2")
@@ -180,15 +204,22 @@ download_steamcmd() {
     local selected_url="${urls[$((idx-1))]}"
     local selected_name="${names[$((idx-1))]}"
     echo_info "使用选择的镜像源: $selected_name"
-    axel -n 10 -o "$output" "$selected_url"
+    download "$selected_url" 3 10
     if [[ $? -ne 0 || ! -s "$output" ]]; then
         echo_error "下载失败"
         rm -f "$output"
         return 1
     fi
 
-    echo_info "下载成功，来源：$selected_name"
-    tar -xzf "$output" && rm -f "$output" && return 0
+    local size=$(stat -c%s "$output" 2>/dev/null || echo 0)
+    if [[ $size -ge 1000000 ]]; then
+        echo_info "下载成功，来源：$selected_name"
+        tar -xzf "$output" && rm -f "$output" && return 0
+    else
+        echo_error "文件大小异常 ($size 字节)，下载失败"
+        rm -f "$output"
+        return 1
+    fi
 }
 
 # 修复MOD依赖
@@ -203,7 +234,7 @@ fix_mod_deps() {
 # 安装/更新核心（通用）
 run_steamcmd_update() {
     cd "$STEAMCMD_DIR" || fail "无法进入 $STEAMCMD_DIR"
-    ./steamcmd.sh +force_install_dir "$INSTALL_DIR" +login anonymous +app_update 343050 validate +quit
+    ./steamcmd.sh +login anonymous +force_install_dir "$INSTALL_DIR" +app_update 343050 validate +quit
     fix_mod_deps
 }
 
@@ -217,7 +248,7 @@ Install_dst() {
     echo_info "正在安装 Don't Starve Together 服务器..."
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y screen unzip lib32gcc-s1 libcurl4-gnutls-dev:i386 libcurl4-gnutls-dev axel curl
+    apt-get install -y screen unzip lib32gcc-s1 libcurl4-gnutls-dev:i386 libcurl4-gnutls-dev
 
     create_klei_dirs
     echo_success "饥荒初始文件夹创建完成"
@@ -1144,7 +1175,7 @@ others() {
 CURRENT_VERSION=$(get_current_version)
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.6.1 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.6.0 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"

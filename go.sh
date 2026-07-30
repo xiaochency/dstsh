@@ -156,9 +156,7 @@ select_mirror() {
     return 0
 }
 
-# 通用的下载并解压函数（用于 dstgo 和 steamcmd）
-# 参数：URL, 目标文件名, 解压后目标目录（可选，若提供则移动解压内容到此目录）
-# 返回：成功 0，失败 1
+# 通用的下载并解压函数
 download_and_extract() {
     local url="$1"
     local archive_name="$2"
@@ -166,7 +164,7 @@ download_and_extract() {
     local tmp_dir
 
     print_info "开始下载: $url"
-    if ! curl -fL --retry 3 -o "$archive_name" "$url"; then
+    if ! axel -n 10 -o "$archive_name" "$url"; then
         print_error "下载失败，请检查网络或镜像源"
         return 1
     fi
@@ -208,7 +206,7 @@ install_dst_dependencies() {
 
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y screen unzip lib32gcc-s1 a-certificates curl procps
+    apt-get install -y screen unzip lib32gcc-s1 ca-certificates procps axel
     apt-get install -y libcurl4-gnutls-dev:i386
     apt-get install -y libcurl4-gnutls-dev
 
@@ -572,7 +570,7 @@ download_steamcmd() {
     fi
 
     print_info "正在从 $url 下载 steamcmd..."
-    if ! curl -fL --retry 10 --connect-timeout 10 --max-time 300 -o "$tmp_archive" "$url"; then
+    if ! axel -n 10 -o "$tmp_archive" "$url"; then
         print_error "下载 steamcmd 失败"
         rm -f "$tmp_archive"
         return 1
