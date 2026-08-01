@@ -297,11 +297,35 @@ status_server() {
 }
 
 view_log() {
-    print_title ">>> 实时查看 Palworld 完整日志（Ctrl+C 退出）"
-    if ! systemctl is-active --quiet "$SERVICE_NAME"; then
-        print_warn "服务器当前未运行，仍会显示历史日志"
-    fi
-    journalctl -u "$SERVICE_NAME" -f
+    print_title ">>> 查看日志"
+    while true; do
+        clear
+        echo "=== 日志查看 ==="
+        echo "1) 实时日志 (追踪)"
+        echo "2) 全部日志 (历史)"
+        echo "0) 返回"
+        echo -n "请选择: "
+        read -r log_choice
+        case $log_choice in
+            1)
+                # 实时追踪，Ctrl+C 退出后返回主菜单
+                journalctl -u "$SERVICE_NAME" -f
+                break
+                ;;
+            2)
+                # 显示全部历史日志，使用 less 分页
+                journalctl -u "$SERVICE_NAME" --no-pager | less
+                # 退出 less 后继续显示子菜单
+                ;;
+            0)
+                return
+                ;;
+            *)
+                print_error "无效选项"
+                read -p "按回车继续..."
+                ;;
+        esac
+    done
 }
 
 # 以 steam 用户身份执行 steamcmd（真正切换用户）
@@ -601,7 +625,7 @@ rcon_menu() {
 show_menu() {
     clear
     echo "===================================="
-    print_title "Palworld 服务端管理1.0.5"
+    print_title "Palworld 服务端管理1.0.6"
     echo "===================================="
     echo "1) 启动服务器"
     echo "2) 更新服务器"
