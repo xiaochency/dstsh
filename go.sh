@@ -3,7 +3,6 @@
 # ==============================================================================
 # 脚本：dst-admin-go 管理脚本
 # 描述：适用于ubuntu管理 Don't Starve Together 专用服务器
-# 版本：1.0.3
 # 作者：xiaochency
 # ==============================================================================
 
@@ -60,7 +59,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              Dst-admin-go管理脚本 v1.0.3                      "
+    echo "              Dst-admin-go管理脚本 v1.0.4                      "
     echo "                 Don't Starve Together                         "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -206,9 +205,8 @@ install_dst_dependencies() {
 
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y screen unzip lib32gcc-s1 ca-certificates procps axel
-    apt-get install -y libcurl4-gnutls-dev:i386
-    apt-get install -y libcurl4-gnutls-dev
+    apt-get install -y screen unzip ca-certificates procps axel
+    apt-get install -y libstdc++6:i386 libgcc1:i386 libcurl4-gnutls-dev:i386
 
     print_success "所有依赖安装完成"
 }
@@ -629,7 +627,7 @@ install_dst() {
     if $install_success; then
         print_success "✅ 服务器安装验证通过！"
         # 修复依赖库
-        cp "$STEAMCMD_DIR/linux32/libstdc++.so.6" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
+        # cp "$STEAMCMD_DIR/linux32/libstdc++.so.6" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
         cp "$STEAMCMD_DIR/linux32/steamclient.so" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
         cp "$STEAMCMD_DIR/linux64/steamclient.so" "$INSTALL_DIR/bin64/lib64/" 2>/dev/null
         print_success "依赖已修复"
@@ -654,7 +652,7 @@ update_dst() {
     # 修复 MOD 更新 bug（复制依赖文件）
     cp "$STEAMCMD_DIR/linux32/steamclient.so" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
     cp "$STEAMCMD_DIR/linux64/steamclient.so" "$INSTALL_DIR/bin64/lib64/" 2>/dev/null
-    cp "$STEAMCMD_DIR/linux32/libstdc++.so.6" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
+    # cp "$STEAMCMD_DIR/linux32/libstdc++.so.6" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
     print_success "MOD 更新 bug 已修复"
 }
 
