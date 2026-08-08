@@ -3,7 +3,7 @@
 # ==============================================================================
 # 脚本：dst-admin-go 管理脚本
 # 描述：适用于ubuntu管理 Don't Starve Together 专用服务器
-# 版本：1.0.2
+# 版本：1.0.3
 # 作者：xiaochency
 # ==============================================================================
 
@@ -60,7 +60,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              Dst-admin-go管理脚本 v1.0.2                      "
+    echo "              Dst-admin-go管理脚本 v1.0.3                      "
     echo "                 Don't Starve Together                         "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -164,7 +164,7 @@ download_and_extract() {
     local tmp_dir
 
     print_info "开始下载: $url"
-    if ! axel -n 10 -o "$archive_name" "$url"; then
+    if ! axel -n 16 -o "$archive_name" "$url"; then
         print_error "下载失败，请检查网络或镜像源"
         return 1
     fi
@@ -570,7 +570,7 @@ download_steamcmd() {
     fi
 
     print_info "正在从 $url 下载 steamcmd..."
-    if ! axel -n 10 -o "$tmp_archive" "$url"; then
+    if ! axel -n 16 -o "$tmp_archive" "$url"; then
         print_error "下载 steamcmd 失败"
         rm -f "$tmp_archive"
         return 1
@@ -776,48 +776,52 @@ cd "$HOME" || exit
 while true; do
     show_main_menu
     read -r choice
-    case $choice in
-        0)
-            clear_dstgo
-            install_dstgo
-            pause_and_return
-            ;;
-        1)
-            start_dstgo
-            pause_and_return
-            ;;
-        2)
-            stop_dstgo
-            pause_and_return
-            ;;
-        3)
-            auto_start_dstgo
-            ;;
-        4)
-            install_dst
-            ;;
-        5)
-            update_dst
-            ;;
-        6)
-            manage_crontab
-            ;;
-        7)
-            disable_ubuntu_autoupdate
-            ;;
-        8)
-            set_swap
-            ;;
-        9)
-            change_port
-            ;;
-        q|Q)
-            echo -e "${GREEN}感谢使用，再见！${NC}"
-            exit 0
-            ;;
-        *)
-            print_error "请输入正确的选项 [0-9 或 q]"
-            sleep 1
-            ;;
-    esac
+case $choice in
+    0)
+        clear_dstgo
+        install_dstgo
+        pause_and_return
+        ;;
+    1)
+        start_dstgo
+        pause_and_return
+        ;;
+    2)
+        stop_dstgo
+        pause_and_return
+        ;;
+    3)
+        auto_start_dstgo
+        ;;
+    4)
+        install_dst
+        pause_and_return
+        ;;
+    5)
+        update_dst
+        pause_and_return
+        ;;
+    6)
+        manage_crontab
+        ;;
+    7)
+        disable_ubuntu_autoupdate
+        pause_and_return
+        ;;
+    8)
+        set_swap
+        pause_and_return
+        ;;
+    9)
+        change_port
+        ;;
+    q|Q)
+        echo -e "${GREEN}感谢使用，再见！${NC}"
+        exit 0
+        ;;
+    *)
+        print_error "请输入正确的选项 [0-9 或 q]"
+        sleep 1
+        ;;
+esac
 done
