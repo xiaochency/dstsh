@@ -36,8 +36,8 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "   ║          饥荒管理平台 (DMP) 一体化管理脚本 v1.0.5        ║"
-    echo "   ║                 Don't Starve Together                    ║"
+    echo "              饥荒管理平台 (DMP) 一体化管理脚本 v1.0.6           "
+    echo "                    Don't Starve Together                      "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -117,9 +117,9 @@ install_dmp() {
     check_axel
 
     local dmp_urls=(
-        "https://github.dpik.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
+        "https://gh.b52m.cn/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
         "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
-        "https://gh.927223.xyz/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
+        "https://ghproxy.homeboyc.cn/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
         "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
         "https://ghfast.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.1.6/dmp.tgz"
     )
@@ -425,9 +425,9 @@ download_steamcmd() {
 
     # 预置镜像列表
     local steamcmd_urls=(
-        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://gh.927223.xyz/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
-        "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://gh.b52m.cn/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://ghproxy.homeboyc.cn/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
     )
