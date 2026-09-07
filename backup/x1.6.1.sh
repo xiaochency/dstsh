@@ -109,7 +109,7 @@ create_klei_dirs() {
 # 设置虚拟内存
 set_swap() {
     local swapfile="/swap.img"
-    local swapsize="4G"
+    local swapsize="2G"
 
     # 检查是否已有 swap 设备或文件
 	if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
@@ -134,8 +134,8 @@ set_swap() {
 
 	# 更改swap配置并持久化（无论 swap 是否已存在都执行）
 	sysctl -w vm.swappiness=20
-	sysctl -w vm.min_free_kbytes=65536
-	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 65536\n' >/etc/sysctl.d/dmp_swap.conf
+	sysctl -w vm.min_free_kbytes=100000
+	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' >/etc/sysctl.d/dmp_swap.conf
 
 	echo_green "系统swap设置成功"
 }
@@ -180,7 +180,7 @@ download_steamcmd() {
     local selected_url="${urls[$((idx-1))]}"
     local selected_name="${names[$((idx-1))]}"
     echo_info "使用选择的镜像源: $selected_name"
-    axel -n 16 -o "$output" "$selected_url"
+    axel -n 10 -o "$output" "$selected_url"
     if [[ $? -ne 0 || ! -s "$output" ]]; then
         echo_error "下载失败"
         rm -f "$output"
@@ -582,8 +582,8 @@ ms_servers() {
         # 切换到 HOME 目录，确保 download 将文件保存至正确位置
         cd "$HOME" || return 1
 
-        # 下载ms.sh
-        if axel -n 1 "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh"; then
+        # 调用 download 函数，传入 URL、重试次数（3次）和连接超时（5秒）
+        if download "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh" 3 5; then
             # 验证下载的文件是否合法
             if head -n 1 "$MS_SCRIPT" | grep -q '^#!/bin/bash'; then
                 chmod +x "$MS_SCRIPT"
@@ -1088,7 +1088,7 @@ others() {
             1)
                 echo_info "正在更新脚本..."
                 [[ -f "x.sh" ]] && mv "x.sh" "x.sh.bak"
-                if axel -n 1 "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh"; then
+                if download "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh" 5 10; then
                     chmod 755 x.sh
                     echo_success "脚本更新成功，请重新执行"
                 else
@@ -1099,7 +1099,7 @@ others() {
             2)
                 echo_info "正在更新黑名单..."
                 [[ -f "blocklist.txt" ]] && mv "blocklist.txt" "blocklist.txt.bak"
-                if axel -n 1 "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt"; then
+                if download "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt" 5 10; then
                     # 修正：分别复制到两个集群目录
                     for cluster in "Cluster_1" "Cluster_2"; do
                         cp -f blocklist.txt "$KLEI_BASE/$cluster/"
@@ -1144,7 +1144,7 @@ others() {
 CURRENT_VERSION=$(get_current_version)
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.6.2 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.6.1 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
