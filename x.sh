@@ -583,7 +583,7 @@ ms_servers() {
         cd "$HOME" || return 1
 
         # 下载ms.sh
-        if axel -n 1 "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh"; then
+        if wget "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh"; then
             # 验证下载的文件是否合法
             if head -n 1 "$MS_SCRIPT" | grep -q '^#!/bin/bash'; then
                 chmod +x "$MS_SCRIPT"
@@ -1088,7 +1088,7 @@ others() {
             1)
                 echo_info "正在更新脚本..."
                 [[ -f "x.sh" ]] && mv "x.sh" "x.sh.bak"
-                if axel -n 1 "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh"; then
+                if wget "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh"; then
                     chmod 755 x.sh
                     echo_success "脚本更新成功，请重新执行"
                 else
@@ -1099,7 +1099,7 @@ others() {
             2)
                 echo_info "正在更新黑名单..."
                 [[ -f "blocklist.txt" ]] && mv "blocklist.txt" "blocklist.txt.bak"
-                if axel -n 1 "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt"; then
+                if wget "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt"; then
                     # 修正：分别复制到两个集群目录
                     for cluster in "Cluster_1" "Cluster_2"; do
                         cp -f blocklist.txt "$KLEI_BASE/$cluster/"
@@ -1144,7 +1144,7 @@ others() {
 CURRENT_VERSION=$(get_current_version)
 while true; do
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.6.2 By:xiaochency${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.6.3 By:xiaochency${NC}"
     echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
