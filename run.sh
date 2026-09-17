@@ -36,7 +36,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              饥荒管理平台 (DMP) 一体化管理脚本 v1.0.6           "
+    echo "              饥荒管理平台 (DMP) 一体化管理脚本 v1.0.7           "
     echo "                    Don't Starve Together                      "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -238,7 +238,7 @@ clear_dmp() {
 
 set_swap() {
     SWAPFILE=/swap.img
-    SWAPSIZE=2G
+    SWAPSIZE=4G
 
     if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
         print_success "检测到已有 swap 设备 (/dev/dm-1) 或 swap 文件 ($SWAPFILE)，跳过创建步骤"
@@ -260,8 +260,8 @@ set_swap() {
     fi
 
     sysctl -w vm.swappiness=20
-    sysctl -w vm.min_free_kbytes=100000
-    echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 100000\n' >/etc/sysctl.d/dmp_swap.conf
+	sysctl -w vm.min_free_kbytes=65536
+	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 65536\n' >/etc/sysctl.d/dmp_swap.conf
 
     print_success "系统 swap 设置成功"
 }
