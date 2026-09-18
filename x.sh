@@ -137,7 +137,7 @@ set_swap() {
 	sysctl -w vm.min_free_kbytes=65536
 	echo -e 'vm.swappiness = 20\nvm.min_free_kbytes = 65536\n' >/etc/sysctl.d/dmp_swap.conf
 
-	echo_green "系统swap设置成功"
+	echo_success "系统swap设置成功"
 }
 
 # 下载 steamcmd 并处理镜像源
