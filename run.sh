@@ -36,7 +36,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              饥荒管理平台 (DMP) 一体化管理脚本 v1.0.9           "
+    echo "              饥荒管理平台 (DMP) 一体化管理脚本 v1.1.0           "
     echo "                    Don't Starve Together                      "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -103,13 +103,6 @@ check_glibc() {
         fi
     else
         print_warning "非 Ubuntu 系统，如 GLIBC 小于 2.34，请手动升级"
-    fi
-}
-
-check_sqlite3() {
-    print_info "检查 sqlite3 命令..."
-    if ! command -v sqlite3 >/dev/null 2>&1; then
-        apt install -y sqlite3
     fi
 }
 
@@ -322,14 +315,7 @@ list_users() {
         print_error "数据库文件 ${CONFIG_DIR}/dmp.db 不存在！"
         return 1
     fi
-
-    print_info "当前平台注册的用户名如下："
-    echo "--------------------------------"
-    sqlite3 "${CONFIG_DIR}/dmp.db" "SELECT username FROM users;" | while read -r user; do
-        echo -e "${GREEN}  - $user${NC}"
-    done
-    [[ $? -ne 0 ]] && print_warning "（暂无用户或查询失败）"
-    echo "--------------------------------"
+    ./dmp -console list_user
 }
 
 change_password() {
@@ -337,40 +323,7 @@ change_password() {
         print_error "数据库文件 ${CONFIG_DIR}/dmp.db 不存在！"
         return 1
     fi
-
-    print_header
-    print_section "修改用户密码"
-    read -r -p "请输入要修改的用户名: " USERNAME
-
-    exists=$(sqlite3 "${CONFIG_DIR}/dmp.db" "SELECT COUNT(*) FROM users WHERE username='$USERNAME';")
-    if [[ "$exists" -eq 0 ]]; then
-        print_error "用户 '$USERNAME' 不存在！"
-        return 1
-    fi
-
-    read -s -r -p "请输入新密码: " PASSWORD
-    echo
-    read -s -r -p "请再次输入新密码: " PASSWORD2
-    echo
-
-    if [[ "$PASSWORD" != "$PASSWORD2" ]]; then
-        print_error "两次输入的密码不一致！"
-        return 1
-    fi
-
-    if [[ -z "$PASSWORD" ]]; then
-        print_error "密码不能为空！"
-        return 1
-    fi
-
-    db_password=$(echo -n "$PASSWORD" | sha512sum | awk '{print $1}')
-    sqlite3 "${CONFIG_DIR}/dmp.db" "UPDATE users SET password='$db_password' WHERE username='$USERNAME';"
-
-    if [[ $? -eq 0 ]]; then
-        print_success "用户 '$USERNAME' 的密码修改成功！"
-    else
-        print_error "密码修改失败，请检查数据库权限或 SQLite 是否正常"
-    fi
+    ./dmp -console reset_password
 }
 
 # 新增：修改端口函数
@@ -672,17 +625,16 @@ show_main_menu() {
     echo -e "${GREEN}  [5]${NC}  更新 DST 服务器程序"
     echo -e "${GREEN}  [6]${NC}  管理 steamcmd 自动更新任务"
     print_divider
-    echo -e "${GREEN}  [7]${NC}  修改 root 密码并开启远程登录"
-    echo -e "${GREEN}  [8]${NC}  禁用 Ubuntu 自动更新"
-    echo -e "${GREEN}  [9]${NC}  查看 DMP 所有用户名"
+    echo -e "${GREEN}  [7]${NC}  禁用 Ubuntu 自动更新"
+    echo -e "${GREEN}  [8]${NC}  查看 DMP 所有用户名"
+    echo -e "${GREEN}  [9]${NC}  修改 DMP 用户密码"
     print_divider
-    echo -e "${GREEN}  [10]${NC} 修改 DMP 用户密码"
-    echo -e "${GREEN}  [11]${NC} 设置虚拟内存 (Swap)"
-    echo -e "${GREEN}  [12]${NC} 修改 DMP 服务端口"
+    echo -e "${GREEN}  [10]${NC} 设置虚拟内存 (Swap)"
+    echo -e "${GREEN}  [11]${NC} 修改 DMP 服务端口"
     print_divider
     echo -e "${RED}  [q/Q]${NC} 退出脚本"
     print_divider
-    echo -n -e "${CYAN}请输入选项 [0-12/q]: ${NC}"
+    echo -n -e "${CYAN}请输入选项 [0-11/q]: ${NC}"
 }
 
 # ==================== 主程序入口 ====================
@@ -728,29 +680,23 @@ while true; do
             manage_crontab
             ;;
         7)
-            set_root_password
-            break
-            ;;
-        8)
             disable_ubuntu_autoupdate
             break
             ;;
-        9)
-            check_sqlite3
+        8)
             list_users
             pause_and_return
             ;;
-        10)
-            check_sqlite3
+        9)
             change_password
             print_warning "修改后需要重启 DMP 生效！"
             pause_and_return
             ;;
-        11)
+        10)
             set_swap
             break
             ;;
-        12)
+        11)
             change_port
             ;;
         q|Q)
