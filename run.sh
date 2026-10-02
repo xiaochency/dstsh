@@ -36,7 +36,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              饥荒管理平台 (DMP) 管理脚本 v1.1.1                 "
+    echo "              饥荒管理平台 (DMP) 管理脚本 v1.1.2                 "
     echo "                  Don't Starve Together                        "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -497,7 +497,7 @@ install_dst() {
 
     if [ "$install_success" = true ]; then
         print_success "✅ 服务器安装验证通过！"
-        mv $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/libstdc++.so.6.bak 2>/dev/null
+        mv -f $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/libstdc++.so.6.bak 2>/dev/null
         cp "$HOME/steamcmd/linux32/steamclient.so" "$HOME/dst/bin/lib32/" 2>/dev/null
         cp "$HOME/steamcmd/linux64/steamclient.so" "$HOME/dst/bin64/lib64/" 2>/dev/null
         print_success "依赖已修复"
@@ -519,7 +519,7 @@ update_dst() {
     print_success "服务器更新完成，请重新执行脚本"
     cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
     cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
-    mv $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/libstdc++.so.6.bak 2>/dev/null
+    mv -f $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/libstdc++.so.6.bak 2>/dev/null
     print_success "MOD 更新 bug 已修复"
 }
 
