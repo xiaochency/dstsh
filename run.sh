@@ -36,8 +36,8 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              饥荒管理平台 (DMP) 一体化管理脚本 v1.1.0           "
-    echo "                    Don't Starve Together                      "
+    echo "              饥荒管理平台 (DMP) 管理脚本 v1.1.1                 "
+    echo "                  Don't Starve Together                        "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -451,7 +451,7 @@ install_dst() {
     print_info "正在安装 Don't Starve Together 服务器..."
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y screen unzip lib32gcc-s1
+    apt-get install -y screen unzip lib32stdc++6 lib32gcc-s1 lib32z1
     apt-get install -y libcurl4-gnutls-dev:i386
     apt-get install -y libcurl4-gnutls-dev
     print_success "环境依赖安装完毕"
@@ -497,7 +497,7 @@ install_dst() {
 
     if [ "$install_success" = true ]; then
         print_success "✅ 服务器安装验证通过！"
-        cp "$HOME/steamcmd/linux32/libstdc++.so.6" "$HOME/dst/bin/lib32/" 2>/dev/null
+        mv $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/libstdc++.so.6.bak 2>/dev/null
         cp "$HOME/steamcmd/linux32/steamclient.so" "$HOME/dst/bin/lib32/" 2>/dev/null
         cp "$HOME/steamcmd/linux64/steamclient.so" "$HOME/dst/bin64/lib64/" 2>/dev/null
         print_success "依赖已修复"
@@ -519,7 +519,7 @@ update_dst() {
     print_success "服务器更新完成，请重新执行脚本"
     cp $HOME/steamcmd/linux32/steamclient.so $HOME/dst/bin/lib32/ 2>/dev/null
     cp $HOME/steamcmd/linux64/steamclient.so $HOME/dst/bin64/lib64/ 2>/dev/null
-    cp $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/ 2>/dev/null
+    mv $HOME/steamcmd/linux32/libstdc++.so.6 $HOME/dst/bin/lib32/libstdc++.so.6.bak 2>/dev/null
     print_success "MOD 更新 bug 已修复"
 }
 
