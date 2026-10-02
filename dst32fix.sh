@@ -46,11 +46,13 @@ fi
 
 cd "$DST_LIB_DIR"
 
-if [[ -e "$BACKUP" ]]; then
-    warn "备份文件已存在: $BACKUP ，跳过备份步骤。"
-elif [[ -e "$TARGET" ]]; then
+if [[ -e "$TARGET" ]]; then
+    if [[ -e "$BACKUP" ]]; then
+        warn "备份文件已存在: $BACKUP ，将覆盖。"
+    fi
+
     log "备份 libstdc++.so.6 -> libstdc++.so.6.bak"
-    mv "$TARGET" "$BACKUP"
+    mv -f -- "$TARGET" "$BACKUP"
 else
     warn "未找到 $TARGET ，无需备份。"
 fi
