@@ -36,7 +36,7 @@ print_header() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════════════════════════════════╗"
-    echo "              饥荒管理平台 (DMP) 管理脚本 v1.1.3                 "
+    echo "              饥荒管理平台 (DMP) 管理脚本 v1.1.4                 "
     echo "                  Don't Starve Together                        "
     echo "   ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -110,11 +110,11 @@ install_dmp() {
     check_axel
 
     local dmp_urls=(
-        "https://gh.b52m.cn/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.0/dmp.tgz"
-        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.0/dmp.tgz"
-        "https://ghproxy.homeboyc.cn/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.0/dmp.tgz"
-        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.0/dmp.tgz"
-        "https://ghfast.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.0/dmp.tgz"
+        "https://gh.b52m.cn/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.1/dmp.tgz"
+        "https://cdn.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.1/dmp.tgz"
+        "https://ghproxy.homeboyc.cn/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.1/dmp.tgz"
+        "https://edgeone.gh-proxy.org/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.1/dmp.tgz"
+        "https://ghfast.top/github.com/miracleEverywhere/dst-management-platform-api/releases/download/v3.2.1/dmp.tgz"
     )
 
     echo "请选择下载镜像源："
