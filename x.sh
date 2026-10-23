@@ -108,8 +108,8 @@ create_klei_dirs() {
 
 # 设置虚拟内存
 set_swap() {
-    local swapfile="/swap.img"
-    local swapsize="4G"
+    local SWAPFILE="/swap.img"
+    local SWAPSIZE="4G"
 
     # 检查是否已有 swap 设备或文件
 	if [ -b /dev/dm-1 ] || [ -f $SWAPFILE ]; then
@@ -143,14 +143,14 @@ set_swap() {
 # 下载 steamcmd 并处理镜像源
 download_steamcmd() {
     local names=(
-        "镜像源(github.dpik.top)"
+        "镜像源(gh-proxy.com)"
         "镜像源(ghfast.top)"
         "镜像源(cdn.gh-proxy.org)"
         "镜像源(edgeone.gh-proxy.org)"
         "Steam官方源"
     )
     local urls=(
-        "https://github.dpik.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
+        "https://gh-proxy.com/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://ghfast.top/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://cdn.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
         "https://edgeone.gh-proxy.org/github.com/xiaochency/SteamCmdLinuxFile/releases/download/steamcmd-latest/steamcmd_linux.tar.gz"
@@ -193,10 +193,9 @@ download_steamcmd() {
 
 # 修复MOD依赖
 fix_mod_deps() {
-    echo_info "正在执行MOD修复和依赖库"
+    echo_info "正在执行MOD修复"
     cp "$STEAMCMD_DIR/linux32/steamclient.so" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
     cp "$STEAMCMD_DIR/linux64/steamclient.so" "$INSTALL_DIR/bin64/lib64/" 2>/dev/null
-    cp "$STEAMCMD_DIR/linux32/libstdc++.so.6" "$INSTALL_DIR/bin/lib32/" 2>/dev/null
     echo_success "MOD更新bug已修复"
 }
 
@@ -217,7 +216,7 @@ Install_dst() {
     echo_info "正在安装 Don't Starve Together 服务器..."
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y screen unzip lib32gcc-s1 libcurl4-gnutls-dev:i386 libcurl4-gnutls-dev axel curl
+    apt-get install -y screen unzip lib32stdc++6 lib32gcc lib32gcc-s1 libcurl4-gnutls-dev:i386 libcurl4-gnutls-dev axel curl
 
     create_klei_dirs
     echo_success "饥荒初始文件夹创建完成"
@@ -282,55 +281,33 @@ Update_dst() {
 
 # 自动更新所有集群的模组
 AddAutoUpdateMod() {
-    local clusters=("1" "2")
     local mods_file="$INSTALL_DIR/mods/dedicated_server_mods_setup.lua"
-    echo_info "开始自动更新所有集群的模组配置..."
-    echo "============================================"
+    local total_added=0 total_skipped=0
 
-    for cluster_choice in "${clusters[@]}"; do
-        local cluster_file
-        if [[ "$cluster_choice" == "1" ]]; then
-            cluster_file="$KLEI_BASE/Cluster_1/Master/modoverrides.lua"
-            echo_info "正在处理 Cluster_1 的模组配置..."
-        else
-            cluster_file="$KLEI_BASE/Cluster_2/Master/modoverrides.lua"
-            echo_info "正在处理 Cluster_2 的模组配置..."
-        fi
+    for cluster_choice in 1 2; do
+        local cluster_file="$KLEI_BASE/Cluster_${cluster_choice}/Master/modoverrides.lua"
+        [[ -f "$cluster_file" ]] || continue
 
-        if [[ ! -f "$cluster_file" ]]; then
-            echo_warning "⚠️  模组配置文件不存在: $cluster_file"
-            continue
-        fi
-
-        local modTotal=$(grep -c 'workshop-' "$cluster_file" 2>/dev/null || echo "0")
-        if [[ $modTotal -eq 0 ]]; then
-            echo_warning "  在 Cluster_$cluster_choice 中没有发现模组"
-            continue
-        fi
-
-        echo_success "  发现 $modTotal 个模组"
-        local added=0 skipped=0
+        local modTotal=$(grep -c 'workshop-' "$cluster_file" 2>/dev/null || echo 0)
+        [[ "$modTotal" -eq 0 ]] && continue
 
         for ((item=1; item<=modTotal; item++)); do
             local modID=$(grep 'workshop-' "$cluster_file" | cut -d '"' -f2 | sed 's#workshop-##g' | awk "NR==$item")
             [[ -z "$modID" ]] && continue
-            if ! grep -q "$modID" "$mods_file" 2>/dev/null; then
-                echo "        ServerModSetup(\"$modID\")" >> "$mods_file"
-                echo_success "  ✅ 添加模组: $modID"
-                ((added++))
+            if grep -q "$modID" "$mods_file" 2>/dev/null; then
+                ((total_skipped++))
             else
-                echo_warning "  ⚠️ 模组已存在: $modID"
-                ((skipped++))
+                echo "ServerModSetup(\"$modID\")" >> "$mods_file"
+                ((total_added++))
             fi
         done
-        echo_success "  Cluster_$cluster_choice 处理完成: 新增 $added 个模组, 跳过 $skipped 个已存在模组"
-        echo "--------------------------------------------"
     done
 
-    echo "============================================"
-    echo_success "✅ 模组配置更新完成!"
-    echo_info "📁 模组配置文件位置: $mods_file"
-    sleep 2
+    if [[ $total_added -gt 0 ]]; then
+        echo_success "✅ 模组配置已更新：新增 $total_added 个，跳过 $total_skipped 个已存在"
+    else
+        echo_info "模组配置已是最新（共 $total_skipped 个）"
+    fi
 }
 
 # 启动单个分片
@@ -583,7 +560,7 @@ ms_servers() {
         cd "$HOME" || return 1
 
         # 下载ms.sh
-        if wget "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh"; then
+        if wget "https://gh-proxy.com/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/ms.sh"; then
             # 验证下载的文件是否合法
             if head -n 1 "$MS_SCRIPT" | grep -q '^#!/bin/bash'; then
                 chmod +x "$MS_SCRIPT"
@@ -1066,6 +1043,30 @@ set_root_password() {
 }
 
 # --------------------------------------
+# 获取 DST 服务端版本
+# --------------------------------------
+get_dst_version() {
+    local version_file="$INSTALL_DIR/version.txt"
+    
+    if [[ ! -f "$version_file" ]]; then
+        echo "未安装"
+        return 1
+    fi
+    
+    # version.txt 内容格式通常为 "version: 616631" 或纯数字
+    local version
+    version=$(grep -oE '[0-9]+' "$version_file" 2>/dev/null | head -n1)
+    
+    if [[ -z "$version" ]]; then
+        echo "未知"
+        return 1
+    fi
+    
+    echo "$version"
+    return 0
+}
+
+# --------------------------------------
 # 其他选项菜单
 # --------------------------------------
 others() {
@@ -1088,7 +1089,7 @@ others() {
             1)
                 echo_info "正在更新脚本..."
                 [[ -f "x.sh" ]] && mv "x.sh" "x.sh.bak"
-                if wget "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh"; then
+                if wget "https://gh-proxy.com/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/x.sh"; then
                     chmod 755 x.sh
                     echo_success "脚本更新成功，请重新执行"
                 else
@@ -1099,7 +1100,7 @@ others() {
             2)
                 echo_info "正在更新黑名单..."
                 [[ -f "blocklist.txt" ]] && mv "blocklist.txt" "blocklist.txt.bak"
-                if wget "https://github.dpik.top/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt"; then
+                if wget "https://gh-proxy.com/https://raw.githubusercontent.com/xiaochency/dstsh/refs/heads/main/blocklist.txt"; then
                     # 修正：分别复制到两个集群目录
                     for cluster in "Cluster_1" "Cluster_2"; do
                         cp -f blocklist.txt "$KLEI_BASE/$cluster/"
@@ -1128,7 +1129,7 @@ others() {
                 fi
                 ;;
             5) set_swap ;;
-            6) toggle_version ;;
+            6) toggle_version; exit 0 ;;
             7) force_update_public_ip ;;
             8) change_dst_port ;;
             9) set_root_password ;;
@@ -1141,11 +1142,13 @@ others() {
 # --------------------------------------
 # 主菜单循环
 # --------------------------------------
-CURRENT_VERSION=$(get_current_version)
 while true; do
+    CURRENT_VERSION=$(get_current_version)
+	dst_ver=$(get_dst_version)
     echo "-------------------------------------------------"
-    echo -e "${GREEN}饥荒云服务器管理脚本1.6.3 By:xiaochency${NC}"
-    echo -e "${CYAN}当前版本: ${CURRENT_VERSION}位${NC}"
+    echo -e "${GREEN}饥荒云服务器管理脚本1.6.4 By:xiaochency${NC}"
+    echo -e "${CYAN}游戏版本: ${dst_ver}${NC}"
+    echo -e "${CYAN}程序版本: ${CURRENT_VERSION}位${NC}"
     echo "-------------------------------------------------"
     echo -e "${BLUE}请选择一个选项:${NC}"
     echo "-------------------------------------------------"
